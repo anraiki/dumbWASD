@@ -1,0 +1,8 @@
+target/
+*.swp
+*.swo
+
+# GUI frontend
+gui/node_modules/
+gui/dist/
+gui/bun.lock

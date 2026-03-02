@@ -1,0 +1,17 @@
+[package]
+name = "dumbwasd-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI binary for dumbWASD — HID input remapper for Linux"
+
+[[bin]]
+name = "dumbwasd"
+path = "src/main.rs"
+
+[dependencies]
+dumbwasd-core = { path = "../dumbwasd-core" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

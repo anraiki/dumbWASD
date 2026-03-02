@@ -1,0 +1,108 @@
+[device]
+name = "Azeron LTD Azeron Keypad"
+vendor_id = 5840
+product_id = 4284
+rows = 7
+cols = 7
+
+[[buttons]]
+id = 5
+label = "1"
+row = 0
+col = 0
+
+[[buttons]]
+id = 4
+label = "2"
+row = 0
+col = 0
+
+[[buttons]]
+id = 3
+label = "3"
+row = 0
+col = 0
+
+[[buttons]]
+id = 2
+label = "4"
+row = 0
+col = 0
+
+[[buttons]]
+id = 19
+label = "5"
+row = 0
+col = 0
+
+[[buttons]]
+id = 16
+label = "6"
+row = 0
+col = 0
+
+[[buttons]]
+id = 57
+label = "7"
+row = 0
+col = 0
+
+[[buttons]]
+id = 29
+label = "8"
+row = 0
+col = 0
+
+[[buttons]]
+id = 8
+label = "9"
+row = 0
+col = 0
+
+[[buttons]]
+id = 18
+label = "10"
+row = 0
+col = 0
+
+[[buttons]]
+id = 15
+label = "11"
+row = 0
+col = 0
+
+[[buttons]]
+id = 42
+label = "12"
+row = 0
+col = 0
+
+[[buttons]]
+id = 33
+label = "13"
+row = 0
+col = 0
+
+[[buttons]]
+id = 30
+label = "14"
+row = 0
+col = 0
+
+[[buttons]]
+id = 31
+label = "15"
+row = 0
+col = 0
+
+[[buttons]]
+id = 32
+label = "16"
+row = 0
+col = 0
+
+[[buttons]]
+id = 17
+label = "17"
+row = 0
+col = 0

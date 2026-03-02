@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholascross/tauri-v2/refs/heads/main/crates/tauri-utils/schema.json",
+  "productName": "dumbWASD",
+  "version": "0.1.0",
+  "identifier": "com.dumbwasd.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "PATH=$HOME/.bun/bin:$PATH bun run dev",
+    "beforeBuildCommand": "PATH=$HOME/.bun/bin:$PATH bun run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "dumbWASD — Visualizer",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

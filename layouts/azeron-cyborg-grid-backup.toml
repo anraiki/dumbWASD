@@ -1,0 +1,190 @@
+[device]
+name = "Azeron LTD Azeron Keypad"
+vendor_id = 5840
+product_id = 4284
+rows = 6
+cols = 8
+layout_type = "custom"
+
+[[buttons]]
+id = 28
+label = "Up"
+x = 0
+y = 0
+
+[[buttons]]
+id = 4
+label = "Z"
+x = 0
+y = 0
+
+[[buttons]]
+id = 8
+label = "X"
+x = 0
+y = 0
+
+[[buttons]]
+id = 12
+label = "C"
+x = 0
+y = 0
+
+[[buttons]]
+id = 17
+label = "V"
+x = 0
+y = 0
+
+[[buttons]]
+id = 29
+label = "Left"
+x = 0
+y = 0
+
+[[buttons]]
+id = 22
+label = "T"
+x = 0
+y = 0
+
+[[buttons]]
+id = 31
+label = "Right"
+x = 0
+y = 0
+
+[[buttons]]
+id = 3
+label = "Q"
+x = 0
+y = 0
+
+[[buttons]]
+id = 7
+label = "G"
+x = 0
+y = 0
+
+[[buttons]]
+id = 11
+label = "R"
+x = 0
+y = 0
+
+[[buttons]]
+id = 16
+label = "E"
+x = 0
+y = 0
+
+[[buttons]]
+id = 30
+label = "Down"
+x = 0
+y = 0
+
+[[buttons]]
+id = 36
+label = "O"
+x = 0
+y = 0
+
+[[buttons]]
+id = 2
+label = "1"
+x = -283
+y = 294
+
+[[buttons]]
+id = 6
+label = "2"
+x = -157
+y = 220
+
+[[buttons]]
+id = 10
+label = "3"
+x = 238
+y = 69
+
+[[buttons]]
+id = 15
+label = "4"
+x = -38
+y = 55
+
+[[buttons]]
+id = 19
+label = "F"
+x = 87
+y = 25
+
+[[buttons]]
+id = 24
+label = "Left Stick"
+x = -86
+y = -139
+is_joystick = true
+colspan = 2
+rowspan = 2
+
+[[buttons]]
+id = 1
+label = "A"
+x = 258
+y = -36
+
+[[buttons]]
+id = 5
+label = "Alt"
+x = 299
+y = 154
+
+[[buttons]]
+id = 9
+label = "Shift"
+x = 144
+y = 206
+
+[[buttons]]
+id = 14
+label = "Ctrl"
+x = -161
+y = 65
+
+[[buttons]]
+id = 37
+label = "P"
+x = -15
+y = 231
+
+[[buttons]]
+id = 38
+label = "L"
+x = -379
+y = 5
+
+[[buttons]]
+id = 13
+label = "I"
+x = -262
+y = 176
+
+[[buttons]]
+id = 18
+label = "M"
+x = 19
+y = 141
+
+[[buttons]]
+id = 23
+label = "="
+x = 328
+y = 200
+
+[[buttons]]
+id = 20
+label = "Mouse L"
+x = -185
+y = -47

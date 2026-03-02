@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/dumbwasd-core",
+    "crates/dumbwasd-cli",
+    "gui/src-tauri",
+]
+resolver = "2"

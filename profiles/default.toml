@@ -1,0 +1,31 @@
+[profile]
+name = "Default"
+device_name = "Azeron Cyborg"
+
+# Example mappings — evdev button codes to keyboard keys
+# Use `dumbwasd monitor <device>` to discover your device's button codes
+# Key codes reference: /usr/include/linux/input-event-codes.h
+
+[[mappings]]
+from = 304          # BTN_SOUTH
+to = { type = "key", code = 33 }  # KEY_F
+
+[[mappings]]
+from = 305          # BTN_EAST
+to = { type = "key", code = 18 }  # KEY_E
+
+[[mappings]]
+from = 306          # BTN_C
+to = { type = "key", code = 32 }  # KEY_D
+
+[[mappings]]
+from = 307          # BTN_NORTH
+to = { type = "key", code = 17 }  # KEY_W
+
+[[mappings]]
+from = 308          # BTN_WEST
+to = { type = "key", code = 30 }  # KEY_A
+
+[[mappings]]
+from = 309          # BTN_Z
+to = { type = "key", code = 31 }  # KEY_S

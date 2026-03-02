@@ -1,0 +1,16 @@
+[package]
+name = "dumbwasd-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core library for dumbWASD — HID input remapping"
+
+[dependencies]
+evdev = { version = "0.13", features = ["tokio", "serde"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+async-trait = "0.1"
+hidapi = { version = "2", default-features = false, features = ["linux-static-hidraw"] }
