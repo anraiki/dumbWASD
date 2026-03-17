@@ -12,6 +12,16 @@ use tokio::task::JoinHandle;
 pub struct ButtonState {
     pub code: u16,
     pub pressed: bool,
+    pub device_path: String,
+    pub device_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AxisState {
+    pub axis: u16,
+    pub value: i32,
+    pub device_path: String,
+    pub device_name: String,
 }
 
 pub struct MonitorState {
@@ -56,7 +66,7 @@ pub async fn stop_monitoring(state: &MonitorState) {
 /// Monitor multiple evdev devices simultaneously, merging their events.
 async fn monitor_devices(device_paths: Vec<String>, app: tauri::AppHandle) -> Result<()> {
     // Channel to merge events from all device streams
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<ButtonState>(256);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<MonitoredEvent>(256);
 
     // Spawn a reader task for each device path
     for path in &device_paths {
@@ -72,11 +82,22 @@ async fn monitor_devices(device_paths: Vec<String>, app: tauri::AppHandle) -> Re
     // Drop our copy of tx so the channel closes when all readers are done
     drop(tx);
 
-    tracing::info!("monitoring {} device(s): {:?}", device_paths.len(), device_paths);
+    tracing::info!(
+        "monitoring {} device(s): {:?}",
+        device_paths.len(),
+        device_paths
+    );
 
     // Forward merged events to the frontend
     while let Some(payload) = rx.recv().await {
-        let _ = app.emit("button-state", &payload);
+        match payload {
+            MonitoredEvent::Button(button) => {
+                let _ = app.emit("button-state", &button);
+            }
+            MonitoredEvent::Axis(axis) => {
+                let _ = app.emit("axis-state", &axis);
+            }
+        }
     }
 
     tracing::info!("all device streams ended");
@@ -86,23 +107,70 @@ async fn monitor_devices(device_paths: Vec<String>, app: tauri::AppHandle) -> Re
 /// Read events from a single device and send them to the channel.
 async fn read_device_events(
     device_path: &str,
-    tx: tokio::sync::mpsc::Sender<ButtonState>,
+    tx: tokio::sync::mpsc::Sender<MonitoredEvent>,
 ) -> Result<()> {
     let mut input = LinuxInput::new_passive();
     input.open_device(device_path).await?;
+    let device_name = input.device_name().unwrap_or("Unknown").to_string();
 
-    tracing::info!("listening on {device_path}");
+    tracing::info!("listening on {device_name} ({device_path})");
 
     loop {
         let event = input.next_event().await?;
 
-        if let InputEvent::Button { code, pressed } = event {
-            // If the receiver is closed, stop reading
-            if tx.send(ButtonState { code, pressed }).await.is_err() {
-                break;
+        match event {
+            InputEvent::Button { code, pressed } => {
+                tracing::trace!(
+                    device_name = %device_name,
+                    device_path = %device_path,
+                    code,
+                    pressed,
+                    "monitored button event"
+                );
+
+                if tx
+                    .send(MonitoredEvent::Button(ButtonState {
+                        code,
+                        pressed,
+                        device_path: device_path.to_string(),
+                        device_name: device_name.clone(),
+                    }))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
             }
+            InputEvent::Axis { axis, value } => {
+                tracing::trace!(
+                    device_name = %device_name,
+                    device_path = %device_path,
+                    axis,
+                    value,
+                    "monitored axis event"
+                );
+
+                if tx
+                    .send(MonitoredEvent::Axis(AxisState {
+                        axis,
+                        value,
+                        device_path: device_path.to_string(),
+                        device_name: device_name.clone(),
+                    }))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            InputEvent::Sync => {}
         }
     }
 
     Ok(())
+}
+
+enum MonitoredEvent {
+    Button(ButtonState),
+    Axis(AxisState),
 }

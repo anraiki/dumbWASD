@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 
 use dumbwasd_core::core::config;
 use dumbwasd_core::core::engine::Engine;
-use dumbwasd_core::core::event::InputEvent;
+use dumbwasd_core::core::event::{InputEvent, OutputAction};
 use dumbwasd_core::core::layout::{self, ButtonDef, DeviceLayout, DeviceMeta};
 use dumbwasd_core::core::profile::Profile;
 use dumbwasd_core::devices::azeron;
@@ -37,6 +37,12 @@ enum Commands {
         /// Profile name to load
         #[arg(short, long, default_value = "default")]
         profile: String,
+    },
+    /// Temporary proof-of-concept keyboard remap: F8 -> ABC, KEY_MINUS -> DEFG
+    PrototypeRemap {
+        /// Path to the keyboard input device
+        #[arg(short, long)]
+        device: String,
     },
     /// List available profiles
     Profiles,
@@ -107,6 +113,21 @@ enum AzeronAction {
     },
 }
 
+const KEY_MINUS_CODE: u16 = 12;
+const KEY_F8_CODE: u16 = 66;
+const KEY_LEFTSHIFT_CODE: u16 = 42;
+const KEY_RIGHTSHIFT_CODE: u16 = 54;
+const KEY_A_CODE: u16 = 30;
+const KEY_B_CODE: u16 = 48;
+const KEY_C_CODE: u16 = 46;
+const KEY_D_CODE: u16 = 32;
+const KEY_E_CODE: u16 = 18;
+const KEY_F_CODE: u16 = 33;
+const KEY_G_CODE: u16 = 34;
+
+const F8_SEQUENCE: [u16; 3] = [KEY_A_CODE, KEY_B_CODE, KEY_C_CODE];
+const MINUS_SEQUENCE: [u16; 4] = [KEY_D_CODE, KEY_E_CODE, KEY_F_CODE, KEY_G_CODE];
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -121,6 +142,7 @@ async fn main() -> Result<()> {
         Commands::ListDevices => cmd_list_devices().await?,
         Commands::Monitor { device_path } => cmd_monitor(&device_path).await?,
         Commands::Run { device, profile } => cmd_run(&device, &profile).await?,
+        Commands::PrototypeRemap { device } => cmd_prototype_remap(&device).await?,
         Commands::Profiles => cmd_profiles()?,
         Commands::Azeron { action } => cmd_azeron(action)?,
         Commands::LearnLayout {
@@ -153,11 +175,7 @@ async fn cmd_list_devices() -> Result<()> {
 
     for dev in &devices {
         let tag = if dev.is_azeron() { " [Azeron]" } else { "" };
-        let id = dev
-            .path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&dev.path);
+        let id = dev.path.rsplit('/').next().unwrap_or(&dev.path);
         println!(
             "{id:<12} {name}{tag}  ({path}  vendor={vendor:#06x} product={product:#06x})",
             path = dev.path,
@@ -210,12 +228,65 @@ async fn cmd_run(device_path: &str, profile_name: &str) -> Result<()> {
     Ok(())
 }
 
+async fn cmd_prototype_remap(device_path: &str) -> Result<()> {
+    let device = get_device_info(device_path).await?;
+    let mut input = create_input_backend();
+    input.open_device(device_path).await?;
+
+    let mut output = create_output_backend()?;
+    let mut held_keys = HashSet::new();
+
+    println!(
+        "Prototype remap enabled on {} ({device_path})",
+        device.display_name()
+    );
+    println!("  F8 (66) -> ABC");
+    println!("  KEY_MINUS (12) -> DEFG");
+    println!(
+        "Press Ctrl+C in this terminal to disable the prototype and restore normal behavior.\n"
+    );
+
+    loop {
+        tokio::select! {
+            event = input.next_event() => {
+                match event? {
+                    InputEvent::Button { code, pressed } => {
+                        update_held_keys(&mut held_keys, code, pressed);
+
+                        if let Some(sequence) = prototype_sequence_for(code) {
+                            if pressed {
+                                emit_text_sequence(&mut output, sequence, shift_is_held(&held_keys))?;
+                            }
+                            continue;
+                        }
+
+                        emit_key(&mut output, code, pressed)?;
+                    }
+                    InputEvent::Sync => {}
+                    InputEvent::Axis { axis, value } => {
+                        tracing::trace!(axis, value, "ignoring non-key event in keyboard prototype");
+                    }
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("\nPrototype remap disabled. Keyboard grab released.");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_profiles() -> Result<()> {
     let profiles = config::list_profiles()?;
 
     if profiles.is_empty() {
         println!("No profiles found.");
-        println!("Create a .toml file in: {}", config::profiles_dir()?.display());
+        println!(
+            "Create a .toml file in: {}",
+            config::profiles_dir()?.display()
+        );
         return Ok(());
     }
 
@@ -303,7 +374,10 @@ fn cmd_azeron(action: AzeronAction) -> Result<()> {
             }
         }
         AzeronAction::ResetProfile { profile_id } => {
-            println!("Disabling all {count} buttons on profile {profile_id}...", count = azeron::BUTTON_COUNT);
+            println!(
+                "Disabling all {count} buttons on profile {profile_id}...",
+                count = azeron::BUTTON_COUNT
+            );
             for id in 1..=azeron::BUTTON_COUNT as u8 {
                 let ok = azeron::disable_button(&device, profile_id, id)?;
                 if ok {
@@ -367,11 +441,15 @@ fn cmd_azeron(action: AzeronAction) -> Result<()> {
                         let b = &tmpl.buttons[idx];
                         (b.label.clone(), b.row, b.col)
                     } else {
-                        (format!("{}", pb.button_id), idx as u32 / 7, idx as u32 % 7)
+                        (
+                            format!("{}", pb.button_id),
+                            Some(idx as u32 / 7),
+                            Some(idx as u32 % 7),
+                        )
                     }
                 } else {
                     let idx = (pb.button_id as u32).saturating_sub(1);
-                    (format!("{}", pb.button_id), idx / 7, idx % 7)
+                    (format!("{}", pb.button_id), Some(idx / 7), Some(idx % 7))
                 };
 
                 let key_name = layout::evdev_key_name(code);
@@ -380,7 +458,17 @@ fn cmd_azeron(action: AzeronAction) -> Result<()> {
                     pb.button_id, pb.key_code, code, key_name
                 );
 
-                buttons.push(ButtonDef { id: code, label, row, col });
+                buttons.push(ButtonDef {
+                    id: code,
+                    label,
+                    row,
+                    col,
+                    x: None,
+                    y: None,
+                    is_joystick: None,
+                    colspan: None,
+                    rowspan: None,
+                });
             }
 
             if buttons.is_empty() {
@@ -394,6 +482,7 @@ fn cmd_azeron(action: AzeronAction) -> Result<()> {
                     product_id: azeron::PRODUCT_ID,
                     rows: template.as_ref().map_or(7, |t| t.device.rows),
                     cols: template.as_ref().map_or(7, |t| t.device.cols),
+                    layout_type: None,
                 },
                 buttons,
             };
@@ -442,10 +531,7 @@ async fn cmd_learn_layout(
     let mut input = dumbwasd_core::platform::linux::LinuxInput::new_passive();
     input.open_device(device_path).await?;
 
-    println!(
-        "Device: {} ({})\n",
-        device_info.name, device_path
-    );
+    println!("Device: {} ({})\n", device_info.name, device_path);
 
     // Run learning mode
     let expected_count = if device_info.is_azeron() {
@@ -483,13 +569,18 @@ async fn cmd_learn_layout(
             let (r, c) = if use_template_positions {
                 (row, col)
             } else {
-                (i as u32 / cols, i as u32 % cols)
+                (Some(i as u32 / cols), Some(i as u32 % cols))
             };
             ButtonDef {
                 id: code,
                 label: label.clone(),
                 row: r,
                 col: c,
+                x: None,
+                y: None,
+                is_joystick: None,
+                colspan: None,
+                rowspan: None,
             }
         })
         .collect();
@@ -501,6 +592,7 @@ async fn cmd_learn_layout(
             product_id: device_info.product_id,
             rows,
             cols,
+            layout_type: None,
         },
         buttons,
     };
@@ -514,7 +606,7 @@ async fn learn_guided_mode(
     input: &mut dumbwasd_core::platform::linux::LinuxInput,
     device_info: &DeviceInfo,
     template: &Option<DeviceLayout>,
-) -> Result<Vec<(u16, String, u32, u32)>> {
+) -> Result<Vec<(u16, String, Option<u32>, Option<u32>)>> {
     let mut discovered = Vec::new();
     let mut seen_codes: HashSet<u16> = HashSet::new();
 
@@ -542,10 +634,14 @@ async fn learn_guided_mode(
             (b.label.clone(), b.row, b.col)
         } else {
             let num = i + 1;
-            (format!("{num}"), 0, 0)
+            (format!("{num}"), None, None)
         };
 
-        println!("  Press button {} (\"{}\"), then release it...", i + 1, label);
+        println!(
+            "  Press button {} (\"{}\"), then release it...",
+            i + 1,
+            label
+        );
 
         // Wait for press
         let code = loop {
@@ -590,7 +686,7 @@ async fn learn_guided_mode(
 async fn learn_scan_mode(
     input: &mut dumbwasd_core::platform::linux::LinuxInput,
     expected: Option<usize>,
-) -> Result<Vec<(u16, String, u32, u32)>> {
+) -> Result<Vec<(u16, String, Option<u32>, Option<u32>)>> {
     println!("Scan mode: press all your buttons in any order.");
     if let Some(n) = expected {
         println!("Expected: ~{n} buttons. Some may be disabled or analog-only.");
@@ -648,12 +744,12 @@ async fn learn_scan_mode(
     }
 
     // Build results with auto-arranged grid positions
-    let results: Vec<(u16, String, u32, u32)> = seen_codes
+    let results: Vec<(u16, String, Option<u32>, Option<u32>)> = seen_codes
         .iter()
         .enumerate()
         .map(|(i, &code)| {
             let label = format!("{}", i + 1);
-            (code, label, 0, 0) // positions will be auto-arranged later
+            (code, label, None, None) // positions will be auto-arranged later
         })
         .collect();
 
@@ -661,6 +757,78 @@ async fn learn_scan_mode(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
+
+fn prototype_sequence_for(code: u16) -> Option<&'static [u16]> {
+    match code {
+        KEY_F8_CODE => Some(&F8_SEQUENCE),
+        KEY_MINUS_CODE => Some(&MINUS_SEQUENCE),
+        _ => None,
+    }
+}
+
+fn shift_is_held(held_keys: &HashSet<u16>) -> bool {
+    held_keys.contains(&KEY_LEFTSHIFT_CODE) || held_keys.contains(&KEY_RIGHTSHIFT_CODE)
+}
+
+fn update_held_keys(held_keys: &mut HashSet<u16>, code: u16, pressed: bool) {
+    if pressed {
+        held_keys.insert(code);
+    } else {
+        held_keys.remove(&code);
+    }
+}
+
+fn emit_key<O: dumbwasd_core::platform::OutputBackend>(
+    output: &mut O,
+    code: u16,
+    pressed: bool,
+) -> Result<()> {
+    output.emit(&OutputAction::Key { code, pressed })?;
+    output.emit_sync()?;
+    Ok(())
+}
+
+fn emit_key_tap<O: dumbwasd_core::platform::OutputBackend>(
+    output: &mut O,
+    code: u16,
+) -> Result<()> {
+    output.emit(&OutputAction::Key {
+        code,
+        pressed: true,
+    })?;
+    output.emit(&OutputAction::Key {
+        code,
+        pressed: false,
+    })?;
+    Ok(())
+}
+
+fn emit_text_sequence<O: dumbwasd_core::platform::OutputBackend>(
+    output: &mut O,
+    sequence: &[u16],
+    shift_already_held: bool,
+) -> Result<()> {
+    if !shift_already_held {
+        output.emit(&OutputAction::Key {
+            code: KEY_LEFTSHIFT_CODE,
+            pressed: true,
+        })?;
+    }
+
+    for &code in sequence {
+        emit_key_tap(output, code)?;
+    }
+
+    if !shift_already_held {
+        output.emit(&OutputAction::Key {
+            code: KEY_LEFTSHIFT_CODE,
+            pressed: false,
+        })?;
+    }
+
+    output.emit_sync()?;
+    Ok(())
+}
 
 async fn get_device_info(device_path: &str) -> Result<DeviceInfo> {
     let input = create_input_backend();
@@ -697,13 +865,52 @@ fn print_summary(layout: &DeviceLayout, path: &std::path::Path) {
     println!("  {:<8} {:<6} {:<18} {}", "------", "----", "----", "----");
     for (i, btn) in layout.buttons.iter().enumerate() {
         let key_name = layout::evdev_key_name(btn.id);
+        let row = btn
+            .row
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string());
+        let col = btn
+            .col
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string());
         println!(
             "  {:<8} {:<6} {:<18} ({}, {})",
             i + 1,
             btn.id,
             key_name,
-            btn.row,
-            btn.col
+            row,
+            col
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        prototype_sequence_for, shift_is_held, update_held_keys, KEY_F8_CODE, KEY_LEFTSHIFT_CODE,
+        KEY_MINUS_CODE,
+    };
+    use std::collections::HashSet;
+
+    #[test]
+    fn prototype_sequences_match_expected_triggers() {
+        assert_eq!(prototype_sequence_for(KEY_F8_CODE), Some(&[30, 48, 46][..]));
+        assert_eq!(
+            prototype_sequence_for(KEY_MINUS_CODE),
+            Some(&[32, 18, 33, 34][..])
+        );
+        assert_eq!(prototype_sequence_for(1), None);
+    }
+
+    #[test]
+    fn shift_state_tracks_pressed_keys() {
+        let mut held = HashSet::new();
+        assert!(!shift_is_held(&held));
+
+        update_held_keys(&mut held, KEY_LEFTSHIFT_CODE, true);
+        assert!(shift_is_held(&held));
+
+        update_held_keys(&mut held, KEY_LEFTSHIFT_CODE, false);
+        assert!(!shift_is_held(&held));
     }
 }
