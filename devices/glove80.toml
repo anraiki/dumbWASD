@@ -1,0 +1,32 @@
+schema_version = 1
+key = "glove80"
+
+vendor_id = 0x16C0
+product_id = 0x27DB
+
+vendor_name = "MoErgo"
+model = "Glove80"
+friendly_name = "MoErgo Glove80 Keyboard"
+
+raw_name_aliases = [
+  "MoErgo Glove80 Keyboard",
+  "MoErgo Glove80 Left",
+]
+
+interface_name_aliases = [
+  "MoErgo Glove80 Keyboard",
+  "MoErgo Glove80 Left Keyboard",
+]
+
+capabilities = ["keyboard"]
+
+search_terms = [
+  "glove80",
+  "moergo",
+  "16c0:27db",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "MoErgo Glove80 keyboard device"

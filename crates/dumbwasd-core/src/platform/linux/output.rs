@@ -78,9 +78,7 @@ impl OutputBackend for LinuxOutput {
             }
         };
 
-        self.device
-            .emit(&events)
-            .context("failed to emit events")?;
+        self.device.emit(&events).context("failed to emit events")?;
 
         Ok(())
     }

@@ -2,30 +2,77 @@
 name = "Default"
 device_name = "Azeron Cyborg"
 
-# Example mappings — evdev button codes to keyboard keys
-# Use `dumbwasd monitor <device>` to discover your device's button codes
-# Key codes reference: /usr/include/linux/input-event-codes.h
+[[devices]]
+id = ""
+vendor_id = 5840
+product_id = 4284
+name = "Azeron Keypad"
+raw_name = ""
+layout = ""
+device_kind = "azeron"
+active_binding_preset = ""
+binding_presets = []
+
+[[devices]]
+id = ""
+vendor_id = 10462
+product_id = 4607
+name = "Microsoft X-Box 360 pad 0"
+raw_name = ""
+layout = ""
+device_kind = "gamepad"
+active_binding_preset = ""
+binding_presets = []
+
+[[devices]]
+id = ""
+vendor_id = 1133
+product_id = 49304
+name = "Logitech G502 X LIGHTSPEED"
+raw_name = ""
+layout = ""
+device_kind = "mouse"
+active_binding_preset = ""
+binding_presets = []
 
 [[mappings]]
-from = 304          # BTN_SOUTH
-to = { type = "key", code = 33 }  # KEY_F
+from = 304
+
+[mappings.to]
+type = "key"
+code = 33
 
 [[mappings]]
-from = 305          # BTN_EAST
-to = { type = "key", code = 18 }  # KEY_E
+from = 305
+
+[mappings.to]
+type = "key"
+code = 18
 
 [[mappings]]
-from = 306          # BTN_C
-to = { type = "key", code = 32 }  # KEY_D
+from = 306
+
+[mappings.to]
+type = "key"
+code = 32
 
 [[mappings]]
-from = 307          # BTN_NORTH
-to = { type = "key", code = 17 }  # KEY_W
+from = 307
+
+[mappings.to]
+type = "key"
+code = 17
 
 [[mappings]]
-from = 308          # BTN_WEST
-to = { type = "key", code = 30 }  # KEY_A
+from = 308
+
+[mappings.to]
+type = "key"
+code = 30
 
 [[mappings]]
-from = 309          # BTN_Z
-to = { type = "key", code = 31 }  # KEY_S
+from = 309
+
+[mappings.to]
+type = "key"
+code = 31

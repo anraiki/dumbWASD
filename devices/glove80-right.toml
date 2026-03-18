@@ -1,0 +1,34 @@
+schema_version = 1
+key = "glove80-right"
+
+vendor_id = 0x3434
+product_id = 0x0200
+
+vendor_name = "MoErgo"
+model = "Glove80 Right"
+friendly_name = "Glove80 Right"
+
+raw_name_aliases = [
+  "MoErgo Glove80 Right",
+]
+
+interface_name_aliases = [
+  "MoErgo Glove80 Right Keyboard",
+]
+
+capabilities = ["keyboard"]
+logical_device_key = "glove80"
+logical_device_name = "Glove80"
+logical_role = "right"
+group_strategy = "group"
+
+search_terms = [
+  "glove80",
+  "moergo",
+  "3434:0200",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "MoErgo right half"

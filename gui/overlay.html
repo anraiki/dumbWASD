@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dumbWASD Overlay</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      html, body {
+        height: 100%;
+        background: transparent;
+        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        color: #e0e0e0;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      .overlay-root {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: rgba(10, 10, 25, 0.75);
+        border: 1px solid rgba(15, 125, 255, 0.3);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .overlay-titlebar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: rgba(22, 33, 62, 0.9);
+        cursor: grab;
+        -webkit-app-region: drag;
+      }
+
+      .overlay-titlebar:active {
+        cursor: grabbing;
+      }
+
+      .overlay-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #0f7dff;
+        flex: 1;
+      }
+
+      .overlay-close {
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: #808090;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        -webkit-app-region: no-drag;
+      }
+
+      .overlay-close:hover {
+        background: rgba(255, 60, 60, 0.3);
+        color: #ff6060;
+      }
+
+      .overlay-body {
+        flex: 1;
+        padding: 12px;
+        overflow-y: auto;
+      }
+
+      .overlay-section {
+        margin-bottom: 12px;
+      }
+
+      .overlay-label {
+        font-size: 10px;
+        font-weight: 600;
+        color: #808090;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+
+      .event-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 11px;
+      }
+
+      .feed-entry {
+        padding: 3px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+
+      .feed-press {
+        color: #5cf;
+        background: rgba(85, 204, 255, 0.08);
+      }
+
+      .feed-release {
+        color: #555;
+      }
+
+      .active-keys {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .active-key {
+        padding: 4px 10px;
+        background: rgba(15, 125, 255, 0.25);
+        border: 1px solid rgba(15, 125, 255, 0.5);
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #4da6ff;
+      }
+
+      .empty-state {
+        font-size: 11px;
+        color: #555;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="overlay-root">
+      <div class="overlay-titlebar">
+        <span class="overlay-title">dumbWASD</span>
+        <button class="overlay-close" id="btn-close">&times;</button>
+      </div>
+      <div class="overlay-body">
+        <div class="overlay-section">
+          <div class="overlay-label">Active Keys</div>
+          <div class="active-keys" id="active-keys">
+            <span class="empty-state">No keys pressed</span>
+          </div>
+        </div>
+        <div class="overlay-section">
+          <div class="overlay-label">Event Feed</div>
+          <div class="event-feed" id="event-feed"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>

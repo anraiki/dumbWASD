@@ -1,0 +1,37 @@
+schema_version = 1
+key = "azeron-cyborg"
+
+vendor_id = 0x16D0
+product_id = 0x10BC
+
+vendor_name = "Azeron"
+model = "Cyborg"
+friendly_name = "Azeron Cyborg"
+
+raw_name_aliases = [
+  "Azeron LTD Azeron Keypad",
+  "Azeron Keypad",
+]
+
+interface_name_aliases = [
+  "Azeron LTD Azeron Keypad Keyboard",
+  "Azeron LTD Azeron Keypad",
+  "Azeron Keypad - Keyboard",
+]
+
+layout_candidates = ["azeron-cyborg"]
+default_layout = "azeron-cyborg"
+
+capabilities = ["keyboard", "mouse", "joystick"]
+button_count = 38
+
+search_terms = [
+  "azeron",
+  "cyborg",
+  "16d0:10bc",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "Original Azeron Cyborg keypad"

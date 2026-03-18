@@ -9,91 +9,91 @@ layout_type = "custom"
 [[buttons]]
 id = 103
 label = "Up"
-x = 450
-y = 0
+x = 570
+y = -30
 
 [[buttons]]
 id = 44
 label = "Z"
-x = 0
-y = 80
+x = 100
+y = 70
 
 [[buttons]]
 id = 45
 label = "X"
-x = 90
-y = 80
+x = 180
+y = 70
 
 [[buttons]]
 id = 46
 label = "C"
-x = 180
-y = 80
+x = 260
+y = 70
 
 [[buttons]]
 id = 47
 label = "V"
-x = 270
-y = 80
+x = 340
+y = 70
 
 [[buttons]]
 id = 105
 label = "Left"
-x = 360
-y = 80
+x = 490
+y = 70
 
 [[buttons]]
 id = 20
 label = "T"
-x = 540
-y = 90
+x = 570
+y = 70
 
 [[buttons]]
 id = 106
 label = "Right"
-x = 630
-y = 90
+x = 650
+y = 70
 
 [[buttons]]
 id = 16
 label = "Q"
-x = 0
-y = 180
+x = 100
+y = 170
 
 [[buttons]]
 id = 34
 label = "G"
-x = 90
-y = 180
+x = 180
+y = 170
 
 [[buttons]]
 id = 19
 label = "R"
-x = 180
-y = 180
+x = 260
+y = 170
 
 [[buttons]]
 id = 18
 label = "E"
-x = 270
-y = 180
+x = 340
+y = 170
 
 [[buttons]]
 id = 108
 label = "Down"
-x = 630
-y = 180
+x = 570
+y = 170
 
 [[buttons]]
 id = 24
 label = "O"
-x = 0
+x = 20
 y = 270
 
 [[buttons]]
 id = 2
 label = "1"
-x = 90
+x = 100
 y = 270
 
 [[buttons]]
@@ -105,25 +105,25 @@ y = 270
 [[buttons]]
 id = 4
 label = "3"
-x = 270
+x = 260
 y = 270
 
 [[buttons]]
 id = 5
 label = "4"
-x = 360
+x = 340
 y = 270
 
 [[buttons]]
 id = 33
 label = "F"
-x = 450
+x = 420
 y = 270
 
 [[buttons]]
 id = 0
 label = "Left Stick"
-x = 540
+x = 500
 y = 270
 is_joystick = true
 colspan = 2
@@ -132,59 +132,59 @@ rowspan = 2
 [[buttons]]
 id = 30
 label = "A"
-x = 90
-y = 360
+x = 100
+y = 370
 
 [[buttons]]
 id = 56
 label = "Alt"
 x = 180
-y = 360
+y = 370
 
 [[buttons]]
 id = 42
 label = "Shift"
-x = 270
-y = 360
+x = 260
+y = 370
 
 [[buttons]]
 id = 29
 label = "Ctrl"
-x = 360
-y = 360
+x = 340
+y = 370
 
 [[buttons]]
 id = 25
 label = "P"
-x = 90
-y = 450
+x = 100
+y = 470
 
 [[buttons]]
 id = 38
 label = "L"
 x = 180
-y = 450
+y = 470
 
 [[buttons]]
 id = 23
 label = "I"
-x = 270
-y = 450
+x = 260
+y = 470
 
 [[buttons]]
 id = 50
 label = "M"
-x = 360
-y = 450
+x = 340
+y = 470
 
 [[buttons]]
 id = 13
 label = "="
-x = 450
-y = 450
+x = 500
+y = 470
 
 [[buttons]]
 id = 272
 label = "Mouse L"
-x = 630
-y = 501
+x = 580
+y = 470

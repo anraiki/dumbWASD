@@ -91,6 +91,99 @@ pub fn list_layouts() -> Result<Vec<String>> {
     Ok(layouts)
 }
 
+fn normalize_layout_key(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn preferred_layout_aliases(vendor_id: u16, product_id: u16) -> &'static [&'static str] {
+    match (vendor_id, product_id) {
+        // Azeron Cyborg
+        (0x16D0, 0x10BC) => &["azeron-cyborg"],
+        _ => &[],
+    }
+}
+
+/// Resolve the best matching layout name for a device when no curated layout is set.
+///
+/// Resolution order:
+/// 1. Explicit per-device aliases
+/// 2. Normalized filename match against the reported names
+/// 3. Metadata name match within layouts sharing the same VID:PID
+/// 4. A sole VID:PID match, if unique
+pub fn resolve_layout_name(
+    vendor_id: u16,
+    product_id: u16,
+    name: &str,
+    raw_name: Option<&str>,
+) -> Result<Option<String>> {
+    let layouts = list_layouts()?;
+    if layouts.is_empty() {
+        return Ok(None);
+    }
+
+    for alias in preferred_layout_aliases(vendor_id, product_id) {
+        if layouts.iter().any(|layout| layout == alias) {
+            return Ok(Some((*alias).to_string()));
+        }
+    }
+
+    let mut candidate_keys = Vec::new();
+    if !name.trim().is_empty() {
+        candidate_keys.push(normalize_layout_key(name));
+    }
+    if let Some(raw_name) = raw_name {
+        if !raw_name.trim().is_empty() {
+            let normalized = normalize_layout_key(raw_name);
+            if !candidate_keys.contains(&normalized) {
+                candidate_keys.push(normalized);
+            }
+        }
+    }
+
+    for candidate in &candidate_keys {
+        if let Some(layout_name) = layouts
+            .iter()
+            .find(|layout| normalize_layout_key(layout) == *candidate)
+        {
+            return Ok(Some(layout_name.clone()));
+        }
+    }
+
+    let mut vid_pid_matches = Vec::new();
+
+    for layout_name in &layouts {
+        let layout = match DeviceLayout::load(layout_name) {
+            Ok(layout) => layout,
+            Err(_) => continue,
+        };
+
+        if layout.device.vendor_id != vendor_id || layout.device.product_id != product_id {
+            continue;
+        }
+
+        let layout_device_key = normalize_layout_key(&layout.device.name);
+        if candidate_keys.iter().any(|candidate| candidate == &layout_device_key) {
+            return Ok(Some(layout_name.clone()));
+        }
+
+        vid_pid_matches.push(layout_name.clone());
+    }
+
+    if vid_pid_matches.len() == 1 {
+        return Ok(vid_pid_matches.into_iter().next());
+    }
+
+    Ok(None)
+}
+
 impl DeviceLayout {
     /// Load a layout by name from the layouts directory.
     pub fn load(name: &str) -> Result<Self> {
@@ -113,8 +206,7 @@ impl DeviceLayout {
             .with_context(|| format!("failed to create layouts directory: {}", dir.display()))?;
 
         let path = dir.join(format!("{name}.toml"));
-        let content =
-            toml::to_string_pretty(self).context("failed to serialize layout to TOML")?;
+        let content = toml::to_string_pretty(self).context("failed to serialize layout to TOML")?;
 
         std::fs::write(&path, &content)
             .with_context(|| format!("failed to write layout: {}", path.display()))?;

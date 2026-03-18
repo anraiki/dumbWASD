@@ -334,18 +334,14 @@ fn read_text_response(device: &HidDevice) -> Result<String> {
 /// Send a command and read the text response.
 fn send_command(device: &HidDevice, command: &str) -> Result<String> {
     let msg = frame_message(command);
-    device
-        .write(&msg)
-        .context("failed to write HID command")?;
+    device.write(&msg).context("failed to write HID command")?;
     read_text_response(device)
 }
 
 /// Send a command and read ALL text response packets (for multi-packet responses like GET_PROFILES).
 fn send_command_multi(device: &HidDevice, command: &str) -> Result<Vec<String>> {
     let msg = frame_message(command);
-    device
-        .write(&msg)
-        .context("failed to write HID command")?;
+    device.write(&msg).context("failed to write HID command")?;
 
     let mut responses = Vec::new();
     let mut buf = [0u8; 64];
@@ -394,9 +390,9 @@ pub fn open_config_device() -> Result<HidDevice> {
         })
         .context("Azeron device not found (is it plugged in?)")?;
 
-    let device = device_info
-        .open_device(&api)
-        .context("failed to open Azeron config interface (try running with sudo or check permissions)")?;
+    let device = device_info.open_device(&api).context(
+        "failed to open Azeron config interface (try running with sudo or check permissions)",
+    )?;
 
     Ok(device)
 }
@@ -536,7 +532,7 @@ pub fn hid_usage_to_evdev(usage: u16) -> Option<u16> {
     // Table sourced from Linux kernel hid-input.c hid_keyboard[] array.
     // Index = USB HID usage ID, value = Linux evdev KEY_* code.
     const TABLE: &[u16] = &[
-        0, 0, 0, 0, // 0x00-0x03: reserved
+        0, 0, 0, 0,   // 0x00-0x03: reserved
         30,  // 0x04: a → KEY_A
         48,  // 0x05: b → KEY_B
         46,  // 0x06: c → KEY_C
@@ -643,14 +639,14 @@ pub fn azeron_code_to_evdev(azeron_code: u32) -> Option<u16> {
         // Modifier keys use a bitmask: LCTRL=1, LSHIFT=2, LALT=4, LGUI=8, etc.
         let modifier_bit = azeron_code - MODIFIER_BASE;
         match modifier_bit {
-            1 => Some(29),     // LCTRL → KEY_LEFTCTRL
-            2 => Some(42),     // LSHIFT → KEY_LEFTSHIFT
-            4 => Some(56),     // LALT → KEY_LEFTALT
-            8 => Some(125),    // LGUI → KEY_LEFTMETA
-            16 => Some(97),    // RCTRL → KEY_RIGHTCTRL
-            32 => Some(54),    // RSHIFT → KEY_RIGHTSHIFT
-            64 => Some(100),   // RALT → KEY_RIGHTALT
-            128 => Some(126),  // RGUI → KEY_RIGHTMETA
+            1 => Some(29),    // LCTRL → KEY_LEFTCTRL
+            2 => Some(42),    // LSHIFT → KEY_LEFTSHIFT
+            4 => Some(56),    // LALT → KEY_LEFTALT
+            8 => Some(125),   // LGUI → KEY_LEFTMETA
+            16 => Some(97),   // RCTRL → KEY_RIGHTCTRL
+            32 => Some(54),   // RSHIFT → KEY_RIGHTSHIFT
+            64 => Some(100),  // RALT → KEY_RIGHTALT
+            128 => Some(126), // RGUI → KEY_RIGHTMETA
             _ => None,
         }
     } else {

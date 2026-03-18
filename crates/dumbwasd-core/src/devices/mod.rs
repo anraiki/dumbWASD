@@ -1,4 +1,5 @@
 pub mod azeron;
+pub mod logitech;
 pub mod registry;
 
 /// Information about a discovered input device.
@@ -10,6 +11,9 @@ pub struct DeviceInfo {
     pub product_id: u16,
     /// Friendly name resolved from device registry (if available).
     pub friendly_name: Option<String>,
+    pub has_keyboard: bool,
+    pub has_gamepad: bool,
+    pub has_mouse: bool,
 }
 
 impl DeviceInfo {
@@ -26,7 +30,7 @@ impl DeviceInfo {
     }
 
     /// Keywords in device names that indicate non-controller devices.
-    const IGNORED_KEYWORDS: &[&str] = &["audio", "hdmi", "microphone", "speaker"];
+    const IGNORED_KEYWORDS: &[&str] = &["audio", "hdmi", "microphone", "speaker", "power button"];
 
     /// Returns true if this device looks like a physical controller
     /// (i.e. its name doesn't contain any ignored keywords).
@@ -45,15 +49,10 @@ impl DeviceInfo {
 /// This is more efficient than resolving one at a time since it
 /// only calls external tools (e.g. solaar) once.
 pub fn resolve_device_names(devices: &mut [DeviceInfo]) {
-    let pairs: Vec<(u16, u16)> = devices
-        .iter()
-        .map(|d| (d.vendor_id, d.product_id))
-        .collect();
-
-    let names = registry::resolve_names(&pairs);
+    let names = registry::resolve_names(devices);
 
     for device in devices.iter_mut() {
-        if let Some(name) = names.get(&(device.vendor_id, device.product_id)) {
+        if let Some(name) = names.get(&device.path) {
             device.friendly_name = Some(name.clone());
         }
     }
