@@ -1,18 +1,27 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactFlow, {
   Node,
   Edge,
+  BackgroundVariant,
   Controls,
   Background,
   useNodesState,
-  useEdgesState,
   NodeTypes,
   Panel,
   useReactFlow,
   ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import {
+  applyKeyboardJoystickState,
+  clearKeyboardJoystickAnalog,
+  createKeyboardJoystickState,
+  isKeyboardJoystickDirectionCode,
+  resetKeyboardJoystickState,
+  setKeyboardJoystickAnalog,
+  setKeyboardJoystickDirection,
+} from './keyboard-joystick';
 
 interface DeviceLayout {
   device: {
@@ -62,27 +71,17 @@ const ButtonNode: React.FC<{ data: ButtonNodeData }> = ({ data }) => {
           height: `${height}px`,
         }}
       >
-        <div style={{ fontSize: '10px', color: '#808090', textAlign: 'center' }}>
+        <div className="joystick-display" data-joystick-display>
           Keyboard Joystick
         </div>
-        <div
-          style={{
-            position: 'relative',
-            width: '80px',
-            height: '80px',
-            background: '#0a0a0f',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <span style={{ position: 'absolute', top: '8px', fontSize: '11px', fontWeight: 600, color: '#808090' }}>W</span>
-          <span style={{ position: 'absolute', left: '8px', fontSize: '11px', fontWeight: 600, color: '#808090' }}>A</span>
-          <span style={{ position: 'absolute', bottom: '8px', fontSize: '11px', fontWeight: 600, color: '#808090' }}>S</span>
-          <span style={{ position: 'absolute', right: '8px', fontSize: '11px', fontWeight: 600, color: '#808090' }}>D</span>
+        <div className="joystick-circle">
+          <div className="joystick-puck" data-joystick-puck></div>
+          <span className="joystick-dir joystick-w" data-joystick-dir="up">W</span>
+          <span className="joystick-dir joystick-a" data-joystick-dir="left">A</span>
+          <span className="joystick-dir joystick-s" data-joystick-dir="down">S</span>
+          <span className="joystick-dir joystick-d" data-joystick-dir="right">D</span>
         </div>
-        <div style={{ fontSize: '11px', color: '#808090', textAlign: 'center' }}>
+        <div className="joystick-label-bottom">
           {data.label}
         </div>
         <div
@@ -108,7 +107,7 @@ const ButtonNode: React.FC<{ data: ButtonNodeData }> = ({ data }) => {
         height: `${height}px`,
       }}
     >
-      <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px' }}>
+      <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px', color: VIEW_LABEL_COLOR }}>
         {data.label}
       </div>
       <div
@@ -130,31 +129,222 @@ const nodeTypes: NodeTypes = {
   buttonNode: ButtonNode,
 };
 
+const VIEW_LABEL_COLOR = 'rgb(128, 128, 144)';
+const AUTO_FIT_PADDING_PX = 20;
+const AUTO_FIT_MAX_ZOOM = 1;
+
 interface LayoutEditorProps {
   layout: DeviceLayout;
   onSave?: (updatedLayout: DeviceLayout) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onButtonStateChange?: (code: number, pressed: boolean) => void;
-  buttonStateRef?: React.MutableRefObject<(code: number, pressed: boolean) => void>;
+  buttonStateRef?: React.MutableRefObject<(
+    code: number,
+    pressed: boolean,
+    options?: { suppressPhysical?: boolean }
+  ) => void>;
+  joystickVectorRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
+  clearStateRef?: React.MutableRefObject<(() => void) | null>;
+  dirtyStateRef?: React.MutableRefObject<boolean>;
+  saveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
-const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, buttonStateRef }) => {
+const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
+  layout,
+  onSave,
+  onDirtyChange,
+  buttonStateRef,
+  joystickVectorRef,
+  clearStateRef,
+  dirtyStateRef,
+  saveRef,
+}) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges] = useEdgesState([]);
+  const edges: Edge[] = [];
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [snapToGrid, setSnapToGrid] = useState(false);
-  const { fitView } = useReactFlow();
+  const { setViewport } = useReactFlow();
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const nodesRef = useRef<Node[]>([]);
+  const baselineFingerprintRef = useRef("");
+  const dirtyRef = useRef(false);
+  const joystickStateRef = useRef(createKeyboardJoystickState());
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  const setDirtyState = useCallback((nextDirty: boolean) => {
+    if (dirtyRef.current === nextDirty) {
+      return;
+    }
+    dirtyRef.current = nextDirty;
+    if (dirtyStateRef) {
+      dirtyStateRef.current = nextDirty;
+    }
+    onDirtyChange?.(nextDirty);
+  }, [dirtyStateRef, onDirtyChange]);
+
+  const buildLayoutFromNodes = useCallback((targetNodes: Node[]): DeviceLayout => {
+    const updatedButtons = layout.buttons.map((btn) => {
+      const node = targetNodes.find((candidate) => candidate.id === `button-${btn.id}`);
+      if (!node) {
+        console.warn(`[LayoutEditor] Node not found for button ${btn.id}`);
+        return {
+          ...btn,
+          x: 0,
+          y: 0,
+        };
+      }
+
+      return {
+        id: btn.id,
+        label: btn.label,
+        x: Math.round(node.position.x),
+        y: Math.round(node.position.y),
+        is_joystick: btn.is_joystick,
+        colspan: btn.colspan,
+        rowspan: btn.rowspan,
+      };
+    });
+
+    return {
+      ...layout,
+      device: {
+        ...layout.device,
+        layout_type: 'custom',
+      },
+      buttons: updatedButtons,
+    };
+  }, [layout]);
+
+  const fingerprintNodes = useCallback((targetNodes: Node[]) => {
+    return targetNodes
+      .map((node) => ({
+        id: node.id,
+        x: Math.round(node.position.x),
+        y: Math.round(node.position.y),
+        colspan: node.data.colspan || 1,
+        rowspan: node.data.rowspan || 1,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((node) => `${node.id}:${node.x}:${node.y}:${node.colspan}:${node.rowspan}`)
+      .join("|");
+  }, []);
+
+  const applyAutoViewport = useCallback((targetNodes: Node[], duration = 0) => {
+    const viewportEl = viewportRef.current;
+    if (!viewportEl || targetNodes.length === 0) {
+      return;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    targetNodes.forEach((node) => {
+      const nodeWidth = 70 * (node.data.colspan || 1);
+      const nodeHeight = 90 * (node.data.rowspan || 1);
+
+      minX = Math.min(minX, node.position.x);
+      minY = Math.min(minY, node.position.y);
+      maxX = Math.max(maxX, node.position.x + nodeWidth);
+      maxY = Math.max(maxY, node.position.y + nodeHeight);
+    });
+
+    const boundsWidth = maxX - minX;
+    const boundsHeight = maxY - minY;
+    const contentWidth = boundsWidth + AUTO_FIT_PADDING_PX * 2;
+    const contentHeight = boundsHeight + AUTO_FIT_PADDING_PX * 2;
+    const availableWidth = viewportEl.clientWidth;
+    const availableHeight = viewportEl.clientHeight;
+
+    if (!availableWidth || !availableHeight || !contentWidth || !contentHeight) {
+      return;
+    }
+
+    const zoom = Math.min(
+      AUTO_FIT_MAX_ZOOM,
+      availableWidth / contentWidth,
+      availableHeight / contentHeight,
+    );
+
+    const x = (availableWidth - contentWidth * zoom) / 2 + (-minX + AUTO_FIT_PADDING_PX) * zoom;
+    const y = (availableHeight - contentHeight * zoom) / 2 + (-minY + AUTO_FIT_PADDING_PX) * zoom;
+
+    void setViewport({ x, y, zoom }, { duration });
+  }, [setViewport]);
+
+  const scheduleAutoViewport = useCallback((targetNodes: Node[], duration = 0) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        applyAutoViewport(targetNodes, duration);
+      });
+    });
+  }, [applyAutoViewport]);
 
   // Expose setButtonState via ref — use direct DOM manipulation for instant feedback
   useEffect(() => {
     if (buttonStateRef) {
-      buttonStateRef.current = (code: number, pressed: boolean) => {
+      buttonStateRef.current = (
+        code: number,
+        pressed: boolean,
+        options?: { suppressPhysical?: boolean }
+      ) => {
         const nodeEl = document.querySelector(`[data-id="button-${code}"] .react-flow-button`);
-        if (nodeEl) {
+        if (nodeEl && !options?.suppressPhysical) {
           nodeEl.classList.toggle('active', pressed);
+        } else if (nodeEl && options?.suppressPhysical && !isKeyboardJoystickDirectionCode(code)) {
+          nodeEl.classList.remove('active');
+        }
+
+        if (setKeyboardJoystickDirection(joystickStateRef.current, code, pressed)) {
+          document.querySelectorAll<HTMLElement>('.react-flow-button.joystick').forEach((joystickEl) => {
+            applyKeyboardJoystickState(joystickEl, joystickStateRef.current);
+          });
         }
       };
     }
   }, [buttonStateRef]);
+
+  useEffect(() => {
+    if (!joystickVectorRef) {
+      return;
+    }
+
+    joystickVectorRef.current = (x: number, y: number) => {
+      setKeyboardJoystickAnalog(joystickStateRef.current, x, y);
+      document.querySelectorAll<HTMLElement>('.react-flow-button.joystick').forEach((joystickEl) => {
+        applyKeyboardJoystickState(joystickEl, joystickStateRef.current);
+      });
+    };
+
+    return () => {
+      joystickVectorRef.current = null;
+    };
+  }, [joystickVectorRef]);
+
+  useEffect(() => {
+    if (!clearStateRef) {
+      return;
+    }
+
+    clearStateRef.current = () => {
+      document.querySelectorAll<HTMLElement>('.react-flow-button.active').forEach((nodeEl) => {
+        nodeEl.classList.remove('active');
+      });
+      resetKeyboardJoystickState(joystickStateRef.current);
+      clearKeyboardJoystickAnalog(joystickStateRef.current);
+      document.querySelectorAll<HTMLElement>('.react-flow-button.joystick').forEach((joystickEl) => {
+        applyKeyboardJoystickState(joystickEl, joystickStateRef.current);
+      });
+    };
+
+    return () => {
+      clearStateRef.current = null;
+    };
+  }, [clearStateRef]);
 
   // Convert layout buttons to React Flow nodes
   useEffect(() => {
@@ -199,53 +389,58 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
       };
     });
 
+    baselineFingerprintRef.current = fingerprintNodes(initialNodes);
+    if (dirtyStateRef) {
+      dirtyStateRef.current = false;
+    }
     setNodes(initialNodes);
-  }, [layout, setNodes]);
+    setDirtyState(false);
+    scheduleAutoViewport(initialNodes);
+    resetKeyboardJoystickState(joystickStateRef.current);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.querySelectorAll<HTMLElement>('.react-flow-button.joystick').forEach((joystickEl) => {
+          applyKeyboardJoystickState(joystickEl, joystickStateRef.current);
+        });
+      });
+    });
+  }, [dirtyStateRef, fingerprintNodes, layout, scheduleAutoViewport, setDirtyState, setNodes]);
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      return;
+    }
+    const nextDirty = fingerprintNodes(nodes) !== baselineFingerprintRef.current;
+    setDirtyState(nextDirty);
+  }, [fingerprintNodes, nodes, setDirtyState]);
+
+  useEffect(() => {
+    const viewportEl = viewportRef.current;
+    if (!viewportEl) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      applyAutoViewport(nodesRef.current);
+    });
+    resizeObserver.observe(viewportEl);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [applyAutoViewport]);
 
   const handleCenter = useCallback(() => {
     if (nodes.length === 0) return;
-
-    // Calculate bounding box of all nodes
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    nodes.forEach((node) => {
-      // Match the button dimensions from ButtonNode component
-      const nodeWidth = 70 * (node.data.colspan || 1);
-      const nodeHeight = 90 * (node.data.rowspan || 1);
-
-      minX = Math.min(minX, node.position.x);
-      minY = Math.min(minY, node.position.y);
-      maxX = Math.max(maxX, node.position.x + nodeWidth);
-      maxY = Math.max(maxY, node.position.y + nodeHeight);
-    });
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const width = maxX - minX;
-    const height = maxY - minY;
-
-    console.log('[LayoutEditor] Bounding box:', { minX, minY, maxX, maxY });
-    console.log('[LayoutEditor] Center:', { centerX, centerY });
-    console.log('[LayoutEditor] Size:', { width, height });
-
-    // Fit view to the bounding box with padding
-    fitView({
-      padding: 0.2,
-      duration: 300,
-      minZoom: 0.1,
-      maxZoom: 2,
-    });
-  }, [nodes, fitView]);
+    applyAutoViewport(nodes, 300);
+  }, [applyAutoViewport, nodes]);
 
   const handleSave = useCallback(async () => {
     console.log('[LayoutEditor] ========== SAVE BUTTON CLICKED ==========');
 
     if (!onSave) {
       console.error('[LayoutEditor] NO onSave callback provided!');
-      return;
+      return false;
     }
 
     console.log('[LayoutEditor] Total nodes:', nodes.length);
@@ -254,39 +449,7 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
     setSaveStatus('saving');
 
     try {
-      // Convert React Flow nodes back to layout format
-      const updatedButtons = layout.buttons.map((btn) => {
-        const node = nodes.find((n) => n.id === `button-${btn.id}`);
-        if (!node) {
-          console.warn(`[LayoutEditor] Node not found for button ${btn.id}`);
-          return {
-            ...btn,
-            x: 0,
-            y: 0,
-          };
-        }
-
-        const updated = {
-          id: btn.id,
-          label: btn.label,
-          x: Math.round(node.position.x),
-          y: Math.round(node.position.y),
-          is_joystick: btn.is_joystick,
-          colspan: btn.colspan,
-          rowspan: btn.rowspan,
-        };
-
-        return updated;
-      });
-
-      const updatedLayout: DeviceLayout = {
-        ...layout,
-        device: {
-          ...layout.device,
-          layout_type: 'custom',
-        },
-        buttons: updatedButtons,
-      };
+      const updatedLayout = buildLayoutFromNodes(nodes);
 
       console.log('[LayoutEditor] Updated layout created');
       console.log('[LayoutEditor] layout_type:', updatedLayout.device.layout_type);
@@ -296,16 +459,30 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
       await onSave(updatedLayout);
 
       console.log('[LayoutEditor] onSave callback completed successfully');
+      baselineFingerprintRef.current = fingerprintNodes(nodes);
+      setDirtyState(false);
       setSaveStatus('success');
 
       // Reset to idle after 2 seconds
       setTimeout(() => setSaveStatus('idle'), 2000);
+      return true;
     } catch (error) {
       console.error('[LayoutEditor] Save error:', error);
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 3000);
+      return false;
     }
-  }, [nodes, layout, onSave]);
+  }, [buildLayoutFromNodes, fingerprintNodes, layout.buttons.length, nodes, onSave, setDirtyState]);
+
+  useEffect(() => {
+    if (!saveRef) {
+      return;
+    }
+    saveRef.current = handleSave;
+    return () => {
+      saveRef.current = null;
+    };
+  }, [handleSave, saveRef]);
 
   const handleReset = useCallback(() => {
     // Reset to grid layout
@@ -333,19 +510,18 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
     });
 
     setNodes(resetNodes);
-  }, [layout, setNodes]);
+    scheduleAutoViewport(resetNodes);
+  }, [layout, scheduleAutoViewport, setNodes]);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div ref={viewportRef} style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.2}
+        minZoom={0.1}
         maxZoom={2}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         snapToGrid={snapToGrid}
         snapGrid={[10, 10]}
         nodesDraggable={true}
@@ -355,7 +531,7 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
         selectionOnDrag={false}
       >
         <Controls />
-        <Background color="#2a2a4a" gap={16} size={1} variant="dots" />
+        <Background color="#2a2a4a" gap={16} size={1} variant={BackgroundVariant.Dots} />
         <Panel position="top-left" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <label style={{
             display: 'flex',
@@ -463,13 +639,26 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({ layout, onSave, button
   );
 };
 
-export const LayoutEditor: React.FC<LayoutEditorProps> = React.forwardRef<any, LayoutEditorProps>((props, ref) => {
+export const LayoutEditor: React.FC<LayoutEditorProps> = (props) => {
   return (
     <ReactFlowProvider>
-      <LayoutEditorInner {...props} buttonStateRef={ref as any} />
+      <LayoutEditorInner {...props} />
     </ReactFlowProvider>
   );
-});
+};
+
+export interface LayoutEditorHandle {
+  setButtonState(
+    code: number,
+    pressed: boolean,
+    options?: { suppressPhysical?: boolean }
+  ): void;
+  setJoystickVector(x: number, y: number): void;
+  clearAll(): void;
+  hasUnsavedChanges(): boolean;
+  save(): Promise<boolean>;
+  destroy(): void;
+}
 
 /**
  * Create a React Flow-based layout editor.
@@ -484,25 +673,59 @@ export function createLayoutEditor(
   layout: DeviceLayout,
   options?: {
     onSave?: (updatedLayout: DeviceLayout) => void;
+    onDirtyChange?: (dirty: boolean) => void;
   }
-) {
+): LayoutEditorHandle {
   const root = createRoot(container);
 
-  const buttonStateRef = React.createRef<(code: number, pressed: boolean) => void>() as React.MutableRefObject<(code: number, pressed: boolean) => void>;
+  const buttonStateRef = React.createRef<(
+    code: number,
+    pressed: boolean,
+    options?: { suppressPhysical?: boolean }
+  ) => void>() as React.MutableRefObject<(
+    code: number,
+    pressed: boolean,
+    options?: { suppressPhysical?: boolean }
+  ) => void>;
+  const joystickVectorRef = React.createRef<((x: number, y: number) => void) | null>() as React.MutableRefObject<((x: number, y: number) => void) | null>;
+  const clearStateRef = React.createRef<(() => void) | null>() as React.MutableRefObject<(() => void) | null>;
+  const dirtyStateRef = React.createRef<boolean>() as React.MutableRefObject<boolean>;
+  const saveRef = React.createRef<(() => Promise<boolean>) | null>() as React.MutableRefObject<(() => Promise<boolean>) | null>;
+  dirtyStateRef.current = false;
 
   root.render(
     <LayoutEditor
-      ref={buttonStateRef}
       layout={layout}
       onSave={options?.onSave}
+      onDirtyChange={options?.onDirtyChange}
+      buttonStateRef={buttonStateRef}
+      joystickVectorRef={joystickVectorRef}
+      clearStateRef={clearStateRef}
+      dirtyStateRef={dirtyStateRef}
+      saveRef={saveRef}
     />
   );
 
   return {
-    setButtonState: (code: number, pressed: boolean) => {
+    setButtonState: (code: number, pressed: boolean, options?: { suppressPhysical?: boolean }) => {
       if (buttonStateRef.current) {
-        buttonStateRef.current(code, pressed);
+        buttonStateRef.current(code, pressed, options);
       }
+    },
+    setJoystickVector: (x: number, y: number) => {
+      joystickVectorRef.current?.(x, y);
+    },
+    clearAll: () => {
+      if (clearStateRef.current) {
+        clearStateRef.current();
+      }
+    },
+    hasUnsavedChanges: () => dirtyStateRef.current === true,
+    save: async () => {
+      if (!saveRef.current) {
+        return false;
+      }
+      return await saveRef.current();
     },
     destroy: () => {
       root.unmount();

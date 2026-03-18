@@ -3,13 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createDeviceSelector } from "./device-selector";
 import { createButtonGrid, type ButtonGrid } from "./button-grid";
-import { createLayoutEditor } from "./react-flow-editor";
+import { createLayoutEditor, type LayoutEditorHandle } from "./react-flow-editor";
 import { createProfileDrawer } from "./profile-drawer";
 import { createDeviceBar, type ProfileDevice, type ProfileDeviceKind } from "./device-bar";
 import { showDeviceModal, type DeviceEntry } from "./device-modal";
 import { showDeviceContextMenu } from "./device-context-menu";
 import { showDeleteDeviceDialog } from "./device-delete-dialog";
+import { showDevicePropertiesDialog } from "./device-properties-dialog";
+import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
+import { isKeyboardJoystickDirectionCode } from "./keyboard-joystick";
 
 interface DeviceLayout {
   device: {
@@ -54,14 +57,37 @@ interface AxisStateEvent {
   value: number;
   device_path: string;
   device_name: string;
+  minimum?: number;
+  maximum?: number;
+  flat?: number;
+}
+
+interface AzeronJoystickStateEvent {
+  x: number;
+  y: number;
+  raw_x: number;
+  raw_y: number;
+  source: string;
 }
 
 interface MonitoringRequest {
   devicePaths: string[];
   label: string;
+  useAzeronHid: boolean;
+}
+
+interface DeviceRegistryToml {
+  path: string;
+  content: string;
 }
 
 const MOUSE_BUTTON_CODES = new Set([272, 273, 274, 275, 276]);
+const JOYSTICK_AXIS_CODES = new Set([0, 1]);
+const JOYSTICK_ACTIVITY_WINDOW_MS = 140;
+const JOYSTICK_DEFAULT_MIN = 0;
+const JOYSTICK_DEFAULT_MAX = 1023;
+const AZERON_JOYSTICK_CENTER = 512;
+const AZERON_JOYSTICK_SPAN = 512;
 
 export async function createApp(container: HTMLElement) {
   const appWindow = getCurrentWindow();
@@ -347,14 +373,22 @@ export async function createApp(container: HTMLElement) {
   let currentLayout: DeviceLayout | null = null;
   let monitoring = false;
   let buttonGrid: ButtonGrid | null = null;
-  let layoutEditor: any = null;
+  let layoutEditor: LayoutEditorHandle | null = null;
   let unlistenButtonState: (() => void) | null = null;
   let unlistenAxisState: (() => void) | null = null;
+  let unlistenAzeronJoystickState: (() => void) | null = null;
   let isEditMode = false;
   let isMacroMode = false;
   let listenAllDevices = false;
   let monitoredPathsKey = "";
   let closeDeviceContextMenu: (() => void) | null = null;
+  const pressedButtons = new Set<number>();
+  const joystickEmulatedDirectionCodes = new Set<number>();
+  const joystickAxisValues = new Map<string, Map<number, number>>();
+  const joystickAxisNormalized = new Map<string, Map<number, number>>();
+  let lastJoystickMotionAt = 0;
+  let currentJoystickVector: { x: number; y: number } | null = null;
+  let azeronHidJoystickActive = false;
 
   // Cache system devices at startup
   let allDevices: DeviceEntry[] = [];
@@ -364,9 +398,13 @@ export async function createApp(container: HTMLElement) {
     statusEl.textContent = `Error loading devices: ${e}`;
   }
 
-  // Find a system DeviceEntry by VID:PID
-  function findDeviceEntry(vid: number, pid: number): DeviceEntry | null {
-    return allDevices.find(d => d.vendor_id === vid && d.product_id === pid) ?? null;
+  function deviceIdentity(device: { id?: string; vendor_id: number; product_id: number }): string {
+    return device.id || `${device.vendor_id}:${device.product_id}`;
+  }
+
+  function findDeviceEntry(device: { id?: string; vendor_id: number; product_id: number }): DeviceEntry | null {
+    const identity = deviceIdentity(device);
+    return allDevices.find((entry) => entry.id === identity) ?? null;
   }
 
   function getProfileDeviceKind(entry: DeviceEntry | null): ProfileDeviceKind | undefined {
@@ -378,11 +416,146 @@ export async function createApp(container: HTMLElement) {
     return undefined;
   }
 
+  function isLikelyJoystickAxisSource(deviceName?: string): boolean {
+    const lower = (deviceName || "").toLowerCase();
+    if (lower.includes("keyboard") || lower.includes("mouse")) {
+      return false;
+    }
+    return lower.includes("gamepad") || lower.includes("joystick") || lower.includes("azeron");
+  }
+
+  function recordJoystickMotion(axis: number, value: number, devicePath: string, deviceName?: string) {
+    if (selectedDeviceInBar?.device_kind !== "azeron") {
+      return;
+    }
+    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(deviceName)) {
+      return;
+    }
+
+    let pathAxes = joystickAxisValues.get(devicePath);
+    if (!pathAxes) {
+      pathAxes = new Map<number, number>();
+      joystickAxisValues.set(devicePath, pathAxes);
+    }
+
+    const previous = pathAxes.get(axis);
+    pathAxes.set(axis, value);
+
+    if (previous === undefined || previous !== value) {
+      lastJoystickMotionAt = Date.now();
+    }
+  }
+
+  function normalizeJoystickAxisValue(value: number, minimum?: number, maximum?: number, flat?: number): number {
+    const min = minimum ?? JOYSTICK_DEFAULT_MIN;
+    const max = maximum ?? JOYSTICK_DEFAULT_MAX;
+    if (max <= min) {
+      return 0;
+    }
+
+    const center = min + (max - min) / 2;
+    const span = Math.max((max - min) / 2, 1);
+    const normalized = Math.max(-1, Math.min(1, (value - center) / span));
+    const deadzone = flat ? Math.min(Math.abs(flat / span), 0.45) : 0;
+
+    if (Math.abs(normalized) <= deadzone) {
+      return 0;
+    }
+
+    return normalized;
+  }
+
+  function normalizeAzeronJoystickValue(value: number): number {
+    return Math.max(-1, Math.min(1, (value - AZERON_JOYSTICK_CENTER) / AZERON_JOYSTICK_SPAN));
+  }
+
+  function applyJoystickVectorToWorkspace() {
+    if (!currentJoystickVector) {
+      return;
+    }
+
+    buttonGrid?.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
+    layoutEditor?.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
+  }
+
+  function updateJoystickVector(
+    axis: number,
+    value: number,
+    devicePath: string,
+    deviceName?: string,
+    minimum?: number,
+    maximum?: number,
+    flat?: number,
+  ) {
+    if (selectedDeviceInBar?.device_kind !== "azeron") {
+      return;
+    }
+    if (azeronHidJoystickActive) {
+      return;
+    }
+    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(deviceName)) {
+      return;
+    }
+
+    let pathAxes = joystickAxisNormalized.get(devicePath);
+    if (!pathAxes) {
+      pathAxes = new Map<number, number>();
+      joystickAxisNormalized.set(devicePath, pathAxes);
+    }
+
+    const normalized = normalizeJoystickAxisValue(value, minimum, maximum, flat);
+    pathAxes.set(axis, normalized);
+
+    currentJoystickVector = {
+      x: pathAxes.get(0) ?? 0,
+      y: pathAxes.get(1) ?? 0,
+    };
+
+    applyJoystickVectorToWorkspace();
+  }
+
+  function updateJoystickVectorFromAzeronHid(payload: AzeronJoystickStateEvent) {
+    if (selectedDeviceInBar?.device_kind !== "azeron") {
+      return;
+    }
+
+    azeronHidJoystickActive = true;
+    lastJoystickMotionAt = Date.now();
+    currentJoystickVector = {
+      x: normalizeAzeronJoystickValue(payload.x),
+      y: normalizeAzeronJoystickValue(payload.y),
+    };
+
+    applyJoystickVectorToWorkspace();
+  }
+
+  function shouldTreatAsJoystickEmulated(code: number, pressed: boolean): boolean {
+    if (selectedDeviceInBar?.device_kind !== "azeron" || !isKeyboardJoystickDirectionCode(code)) {
+      return false;
+    }
+
+    if (pressed) {
+      const isRecentJoystickMotion = (Date.now() - lastJoystickMotionAt) <= JOYSTICK_ACTIVITY_WINDOW_MS;
+      if (isRecentJoystickMotion) {
+        joystickEmulatedDirectionCodes.add(code);
+        return true;
+      }
+      return false;
+    }
+
+    if (joystickEmulatedDirectionCodes.has(code)) {
+      joystickEmulatedDirectionCodes.delete(code);
+      return true;
+    }
+
+    return false;
+  }
+
   function hydrateProfileDevices(devices: ProfileDevice[]): ProfileDevice[] {
     return devices.map((device) => {
       if (device.device_kind) return device;
       const device_kind = getProfileDeviceKind(
-        findDeviceEntry(device.vendor_id, device.product_id)
+        findDeviceEntry(device)
       );
       return device_kind ? { ...device, device_kind } : device;
     });
@@ -390,7 +563,117 @@ export async function createApp(container: HTMLElement) {
 
   function isSameProfileDevice(a: ProfileDevice | null, b: ProfileDevice | null): boolean {
     if (!a || !b) return false;
-    return a.vendor_id === b.vendor_id && a.product_id === b.product_id;
+    return deviceIdentity(a) === deviceIdentity(b);
+  }
+
+  async function persistSelectedDeviceLayout(layoutName: string) {
+    if (!currentProfile || !currentProfileName || !selectedDeviceInBar) {
+      return;
+    }
+
+    const index = currentProfile.devices.findIndex((device) =>
+      isSameProfileDevice(device, selectedDeviceInBar)
+    );
+    if (index < 0) return;
+
+    const currentDevice = currentProfile.devices[index];
+    if (!currentDevice || currentDevice.layout === layoutName) {
+      return;
+    }
+
+    const updatedDevice = {
+      ...currentDevice,
+      layout: layoutName,
+    };
+    const nextDevices = [...currentProfile.devices];
+    nextDevices[index] = updatedDevice;
+
+    const nextProfile: Profile = {
+      ...currentProfile,
+      devices: nextDevices,
+    };
+
+    await invoke("save_profile", {
+      name: currentProfileName,
+      profile: nextProfile,
+    });
+
+    currentProfile = nextProfile;
+    selectedDeviceInBar = updatedDevice;
+    deviceBar.setDevices(currentProfile.devices);
+    deviceBar.setSelected(selectedDeviceInBar);
+  }
+
+  async function showDeviceProperties(device: ProfileDevice) {
+    const registryToml = await invoke<DeviceRegistryToml | null>("get_device_registry_toml", {
+      vendorId: device.vendor_id,
+      productId: device.product_id,
+      name: device.name,
+      rawName: device.raw_name ?? null,
+    });
+
+    showDevicePropertiesDialog({
+      deviceName: device.name,
+      registryToml,
+    });
+  }
+
+  async function editDeviceLayout(device: ProfileDevice) {
+    if (isMacroMode) {
+      isMacroMode = false;
+      macroBtn.classList.remove("active");
+    }
+
+    await selectDeviceFromBar(device);
+
+    if (!currentLayout) {
+      statusEl.textContent = `No layout available to edit for ${device.name}`;
+      return;
+    }
+
+    isEditMode = true;
+    toggleModeBtn.textContent = "View Mode";
+    renderWorkspace();
+    statusEl.textContent = `Editing layout: ${currentLayout.device.name}`;
+  }
+
+  async function resolveLayoutNameForDevice(device: ProfileDevice): Promise<string | null> {
+    try {
+      return await invoke<string | null>("resolve_layout_for_device", {
+        vendorId: device.vendor_id,
+        productId: device.product_id,
+        name: device.name,
+        rawName: device.raw_name ?? null,
+      });
+    } catch (e) {
+      console.warn("Error resolving default layout:", e);
+      return null;
+    }
+  }
+
+  async function confirmExitEditModeIfDirty(): Promise<boolean> {
+    if (!isEditMode || !layoutEditor?.hasUnsavedChanges()) {
+      return true;
+    }
+
+    const layoutName = selectedLayout || currentLayout?.device.name || "this layout";
+    const choice = await showUnsavedLayoutDialog({ layoutName });
+
+    if (choice === "cancel") {
+      return false;
+    }
+
+    if (choice === "discard") {
+      return true;
+    }
+
+    const saved = await layoutEditor.save();
+    if (!saved) {
+      statusEl.textContent = `Error saving layout: ${layoutName}`;
+      return false;
+    }
+
+    return true;
   }
 
   function getAllMonitoredPaths(): string[] {
@@ -405,7 +688,7 @@ export async function createApp(container: HTMLElement) {
 
       const curatedPaths = currentProfile
         ? currentProfile.devices.flatMap((device) => {
-            const entry = findDeviceEntry(device.vendor_id, device.product_id);
+            const entry = findDeviceEntry(device);
             return entry ? entry.paths : [];
           })
         : [];
@@ -416,6 +699,7 @@ export async function createApp(container: HTMLElement) {
       return {
         devicePaths,
         label: "Keyboards + curated gamepads",
+        useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
       };
     }
 
@@ -426,17 +710,19 @@ export async function createApp(container: HTMLElement) {
       return {
         devicePaths,
         label: "All detected devices",
+        useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
       };
     }
 
     if (!selectedDeviceInBar) return null;
 
-    const entry = findDeviceEntry(selectedDeviceInBar.vendor_id, selectedDeviceInBar.product_id);
+    const entry = findDeviceEntry(selectedDeviceInBar);
     if (!entry) return null;
 
     return {
       devicePaths: entry.paths,
       label: entry.name,
+      useAzeronHid: entry.is_azeron || selectedDeviceInBar.device_kind === "azeron",
     };
   }
 
@@ -504,9 +790,11 @@ export async function createApp(container: HTMLElement) {
         async onSelect(entry) {
           // Add device to profile
           const newDevice: ProfileDevice = {
+            id: entry.id,
             vendor_id: entry.vendor_id,
             product_id: entry.product_id,
             name: entry.name,
+            raw_name: entry.raw_name,
             layout: "",
             device_kind: getProfileDeviceKind(entry),
           };
@@ -535,6 +823,19 @@ export async function createApp(container: HTMLElement) {
         device,
         x: position.x,
         y: position.y,
+        onProperties: (targetDevice) => {
+          closeDeviceContextMenu = null;
+          void showDeviceProperties(targetDevice).catch((error) => {
+            statusEl.textContent = `Error loading device properties: ${error}`;
+          });
+        },
+        onEditLayout: (targetDevice) => {
+          closeDeviceContextMenu = null;
+          void editDeviceLayout(targetDevice)
+            .catch((error) => {
+              statusEl.textContent = `Error opening layout editor: ${error}`;
+            });
+        },
         onDelete: (targetDevice) => {
           closeDeviceContextMenu = null;
           showDeleteDeviceDialog({
@@ -561,7 +862,19 @@ export async function createApp(container: HTMLElement) {
     label: "Layout",
     items: layouts.map((name) => ({ value: name, label: name })),
     async onChange(value) {
+      if (value !== selectedLayout) {
+        const canLeaveEditMode = await confirmExitEditModeIfDirty();
+        if (!canLeaveEditMode) {
+          const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
+          if (layoutSelect) {
+            layoutSelect.value = selectedLayout || "";
+          }
+          return;
+        }
+      }
+
       selectedLayout = value;
+      await persistSelectedDeviceLayout(value);
       await loadLayout(value);
     },
   });
@@ -580,6 +893,11 @@ export async function createApp(container: HTMLElement) {
   async function selectProfile(name: string) {
     closeDeviceContextMenu?.();
     closeDeviceContextMenu = null;
+
+    const canLeaveEditMode = await confirmExitEditModeIfDirty();
+    if (!canLeaveEditMode) {
+      return;
+    }
 
     // Stop any current monitoring
     if (monitoring) await stopMonitoring();
@@ -622,20 +940,34 @@ export async function createApp(container: HTMLElement) {
   async function selectDeviceFromBar(device: ProfileDevice) {
     closeDeviceContextMenu?.();
     closeDeviceContextMenu = null;
+
+    if (!isSameProfileDevice(selectedDeviceInBar, device)) {
+      const canLeaveEditMode = await confirmExitEditModeIfDirty();
+      if (!canLeaveEditMode) {
+        deviceBar.setSelected(selectedDeviceInBar);
+        return;
+      }
+    }
+
     selectedDeviceInBar = device;
     deviceBar.setSelected(device);
     statusEl.textContent = device.name;
 
-    // Auto-load layout if the profile specifies one
-    if (device.layout) {
-      selectedLayout = device.layout;
+    const resolvedLayout = device.layout || await resolveLayoutNameForDevice(device);
+
+    // Auto-load a curated layout first, otherwise fall back to a default match.
+    if (resolvedLayout) {
+      selectedLayout = resolvedLayout;
       // Update the layout selector dropdown to match
-      const layoutSelect = layoutSelectorEl.querySelector("select");
-      if (layoutSelect) layoutSelect.value = device.layout;
-      await loadLayout(device.layout);
+      const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
+      if (layoutSelect) layoutSelect.value = resolvedLayout;
+      await loadLayout(resolvedLayout);
     } else {
-      // No layout specified — clear the grid
+      // No curated or fallback layout available — clear the workspace.
+      selectedLayout = null;
       currentLayout = null;
+      const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
+      if (layoutSelect) layoutSelect.value = "";
       renderWorkspace();
     }
 
@@ -645,6 +977,13 @@ export async function createApp(container: HTMLElement) {
   async function deleteDeviceFromProfile(device: ProfileDevice) {
     if (!currentProfile || !currentProfileName) {
       throw new Error("Select a profile first");
+    }
+
+    if (isSameProfileDevice(selectedDeviceInBar, device)) {
+      const canLeaveEditMode = await confirmExitEditModeIfDirty();
+      if (!canLeaveEditMode) {
+        return;
+      }
     }
 
     const nextDevices = currentProfile.devices.filter(
@@ -709,6 +1048,7 @@ export async function createApp(container: HTMLElement) {
       }
     } catch (e) {
       statusEl.textContent = `Error loading layout: ${e}`;
+      buttonGrid?.destroy();
       buttonGrid = null;
       layoutEditor = null;
     }
@@ -724,8 +1064,14 @@ export async function createApp(container: HTMLElement) {
       layoutEditor = null;
     }
 
+    buttonGrid?.destroy();
     gridContainer.innerHTML = "";
     buttonGrid = createButtonGrid(gridContainer, currentLayout);
+    buttonGrid.clearAll();
+    for (const code of pressedButtons) {
+      buttonGrid.setButtonState(code, true);
+    }
+    applyJoystickVectorToWorkspace();
   }
 
   function renderEditMode() {
@@ -733,6 +1079,7 @@ export async function createApp(container: HTMLElement) {
     gridContainer.classList.remove("macro-workspace-host");
     macroStudio.unmount();
 
+    buttonGrid?.destroy();
     gridContainer.innerHTML = "";
     buttonGrid = null;
     gridContainer.style.height = "100%";
@@ -752,6 +1099,13 @@ export async function createApp(container: HTMLElement) {
         }
       },
     });
+    requestAnimationFrame(() => {
+      layoutEditor?.clearAll();
+      for (const code of pressedButtons) {
+        layoutEditor?.setButtonState(code, true);
+      }
+      applyJoystickVectorToWorkspace();
+    });
   }
 
   function renderWorkspace() {
@@ -762,6 +1116,7 @@ export async function createApp(container: HTMLElement) {
         try { layoutEditor.destroy(); } catch (_) {}
         layoutEditor = null;
       }
+      buttonGrid?.destroy();
       buttonGrid = null;
       gridContainer.innerHTML = "";
       gridContainer.classList.add("macro-workspace-host");
@@ -774,6 +1129,8 @@ export async function createApp(container: HTMLElement) {
     macroStudio.unmount();
 
     if (!currentLayout) {
+      buttonGrid?.destroy();
+      buttonGrid = null;
       gridContainer.innerHTML = "";
       return;
     }
@@ -793,7 +1150,14 @@ export async function createApp(container: HTMLElement) {
   }
 
   // ── Toggle View/Edit mode ──
-  toggleModeBtn.addEventListener("click", () => {
+  toggleModeBtn.addEventListener("click", async () => {
+    if (isEditMode) {
+      const canLeaveEditMode = await confirmExitEditModeIfDirty();
+      if (!canLeaveEditMode) {
+        return;
+      }
+    }
+
     isEditMode = !isEditMode;
     toggleModeBtn.textContent = isEditMode ? "View Mode" : "Edit Mode";
 
@@ -803,6 +1167,13 @@ export async function createApp(container: HTMLElement) {
   });
 
   macroBtn.addEventListener("click", async () => {
+    if (!isMacroMode) {
+      const canLeaveEditMode = await confirmExitEditModeIfDirty();
+      if (!canLeaveEditMode) {
+        return;
+      }
+    }
+
     isMacroMode = !isMacroMode;
     macroBtn.classList.toggle("active", isMacroMode);
     renderWorkspace();
@@ -825,8 +1196,12 @@ export async function createApp(container: HTMLElement) {
       connectionIndicator.className = "connection-indicator connecting";
       connectionIndicator.title = "Connecting...";
       statusEl.textContent = "Connecting...";
+      azeronHidJoystickActive = false;
 
-      await invoke("start_monitoring", { devicePaths: request.devicePaths });
+      await invoke("start_monitoring", {
+        devicePaths: request.devicePaths,
+        useAzeronHid: request.useAzeronHid,
+      });
       monitoring = true;
       monitoredPathsKey = [...request.devicePaths].sort().join("|");
       reconnectBtn.style.display = "none";
@@ -839,21 +1214,45 @@ export async function createApp(container: HTMLElement) {
 
       unlistenButtonState = await listen<ButtonStateEvent>("button-state", (event) => {
         const { code, pressed, device_path: devicePath, device_name: deviceName } = event.payload;
+        const suppressPhysicalHighlight = shouldTreatAsJoystickEmulated(code, pressed);
+        if (pressed) {
+          pressedButtons.add(code);
+        } else {
+          pressedButtons.delete(code);
+        }
         addEventLogEntry(code, pressed, devicePath, deviceName);
         if (!MOUSE_BUTTON_CODES.has(code)) {
           macroStudio.handleInputEvent(code, pressed);
         }
 
         if (buttonGrid) {
-          buttonGrid.setButtonState(code, pressed);
+          buttonGrid.setButtonState(code, pressed, {
+            suppressPhysical: suppressPhysicalHighlight,
+          });
         }
         if (layoutEditor) {
-          layoutEditor.setButtonState(code, pressed);
+          layoutEditor.setButtonState(code, pressed, {
+            suppressPhysical: suppressPhysicalHighlight,
+          });
         }
       });
 
+      unlistenAzeronJoystickState = await listen<AzeronJoystickStateEvent>("azeron-joystick-state", (event) => {
+        updateJoystickVectorFromAzeronHid(event.payload);
+      });
+
       unlistenAxisState = await listen<AxisStateEvent>("axis-state", (event) => {
-        const { axis, value, device_path: devicePath, device_name: deviceName } = event.payload;
+        const {
+          axis,
+          value,
+          device_path: devicePath,
+          device_name: deviceName,
+          minimum,
+          maximum,
+          flat,
+        } = event.payload;
+        recordJoystickMotion(axis, value, devicePath, deviceName);
+        updateJoystickVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
         if (IGNORED_LOG_AXES.has(axis)) {
           return;
         }
@@ -883,6 +1282,14 @@ export async function createApp(container: HTMLElement) {
     connectionIndicator.title = "Disconnected";
     reconnectBtn.style.display = "none";
     buttonGrid?.clearAll();
+    layoutEditor?.clearAll();
+    pressedButtons.clear();
+    joystickEmulatedDirectionCodes.clear();
+    joystickAxisValues.clear();
+    joystickAxisNormalized.clear();
+    lastJoystickMotionAt = 0;
+    currentJoystickVector = null;
+    azeronHidJoystickActive = false;
     macroStudio.setMonitoringActive(false);
     syncAuxPanels();
 
@@ -890,6 +1297,8 @@ export async function createApp(container: HTMLElement) {
     unlistenButtonState = null;
     unlistenAxisState?.();
     unlistenAxisState = null;
+    unlistenAzeronJoystickState?.();
+    unlistenAzeronJoystickState = null;
   }
 
   // ── Startup ──

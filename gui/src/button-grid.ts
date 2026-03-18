@@ -1,3 +1,12 @@
+import {
+  applyKeyboardJoystickState,
+  buildKeyboardJoystickMarkup,
+  createKeyboardJoystickState,
+  resetKeyboardJoystickState,
+  setKeyboardJoystickAnalog,
+  setKeyboardJoystickDirection,
+} from "./keyboard-joystick";
+
 interface DeviceLayout {
   device: {
     name: string;
@@ -19,10 +28,24 @@ interface DeviceLayout {
 }
 
 export interface ButtonGrid {
-  setButtonState(code: number, pressed: boolean): void;
+  setButtonState(
+    code: number,
+    pressed: boolean,
+    options?: {
+      suppressPhysical?: boolean;
+    }
+  ): void;
   clearAll(): void;
+  setJoystickVector(x: number, y: number): void;
   /** Returns true if the code matched a known button in the layout. */
   hasButton(code: number): boolean;
+  destroy(): void;
+}
+
+function getButtonSize(btn: DeviceLayout["buttons"][number]) {
+  const width = 70 * (btn.colspan || 1);
+  const height = 90 * (btn.rowspan || 1);
+  return { width, height };
 }
 
 export function createButtonGrid(
@@ -34,7 +57,10 @@ export function createButtonGrid(
   console.log("Creating button grid with layout:", layout.device.name, "Buttons:", layout.buttons.length);
 
   const buttonElements = new Map<number, HTMLElement>();
+  const joystickElements: HTMLElement[] = [];
+  const joystickState = createKeyboardJoystickState();
   const isCustomLayout = layout.device.layout_type === "custom";
+  let resizeObserver: ResizeObserver | null = null;
 
   if (isCustomLayout) {
     // Custom absolute positioning layout
@@ -49,8 +75,7 @@ export function createButtonGrid(
     for (const btn of layout.buttons) {
       const x = btn.x ?? 0;
       const y = btn.y ?? 0;
-      const width = btn.is_joystick ? 120 : 80;
-      const height = 90;
+      const { width, height } = getButtonSize(btn);
 
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
@@ -66,33 +91,32 @@ export function createButtonGrid(
     console.log("Custom layout bounding box:", { minX, minY, maxX, maxY });
     console.log("Container size:", { width: containerWidth, height: containerHeight });
 
+    const viewport = document.createElement("div");
+    viewport.className = "button-grid-custom-viewport";
+
     const grid = document.createElement("div");
     grid.className = "button-grid-custom";
     grid.style.position = "relative";
     grid.style.width = `${containerWidth}px`;
     grid.style.height = `${containerHeight}px`;
-    grid.style.margin = "0 auto"; // Center horizontally
+    grid.style.transformOrigin = "top left";
 
     for (const btn of layout.buttons) {
       const el = document.createElement("div");
       el.className = btn.is_joystick ? "button joystick" : "button";
       el.dataset.code = String(btn.id);
       el.style.position = "absolute";
+      const { width, height } = getButtonSize(btn);
+      el.style.width = `${width}px`;
+      el.style.height = `${height}px`;
       // Offset positions by minX/minY and add padding to normalize to container coordinates
       el.style.left = `${(btn.x ?? 0) - minX + padding}px`;
       el.style.top = `${(btn.y ?? 0) - minY + padding}px`;
 
       if (btn.is_joystick) {
-        el.innerHTML = `
-          <div class="joystick-label">Keyboard Joystick</div>
-          <div class="joystick-circle">
-            <span class="joystick-dir joystick-w">W</span>
-            <span class="joystick-dir joystick-a">A</span>
-            <span class="joystick-dir joystick-s">S</span>
-            <span class="joystick-dir joystick-d">D</span>
-          </div>
-          <div class="joystick-label-bottom">${btn.label}</div>
-        `;
+        el.innerHTML = buildKeyboardJoystickMarkup(btn.label);
+        joystickElements.push(el);
+        applyKeyboardJoystickState(el, joystickState);
       } else {
         el.innerHTML = `
           <div class="button-label">${btn.label}</div>
@@ -104,7 +128,33 @@ export function createButtonGrid(
       grid.appendChild(el);
     }
 
-    container.appendChild(grid);
+    viewport.appendChild(grid);
+    container.appendChild(viewport);
+
+    const updateScale = () => {
+      const availableWidth = container.clientWidth;
+      const availableHeight = container.clientHeight;
+
+      if (!availableWidth || !availableHeight) {
+        return;
+      }
+
+      const scale = Math.min(
+        1,
+        availableWidth / containerWidth,
+        availableHeight / containerHeight,
+      );
+
+      viewport.style.width = `${Math.floor(containerWidth * scale)}px`;
+      viewport.style.height = `${Math.floor(containerHeight * scale)}px`;
+      grid.style.transform = `scale(${scale})`;
+    };
+
+    resizeObserver = new ResizeObserver(() => {
+      updateScale();
+    });
+    resizeObserver.observe(container);
+    requestAnimationFrame(updateScale);
   } else {
     // Legacy grid-based layout
     // Use the device-specified rows/cols if available, otherwise calculate from button positions
@@ -143,16 +193,9 @@ export function createButtonGrid(
       el.style.gridColumn = `${colStart} / span ${colSpan}`;
 
       if (btn.is_joystick) {
-        el.innerHTML = `
-          <div class="joystick-label">Keyboard Joystick</div>
-          <div class="joystick-circle">
-            <span class="joystick-dir joystick-w">W</span>
-            <span class="joystick-dir joystick-a">A</span>
-            <span class="joystick-dir joystick-s">S</span>
-            <span class="joystick-dir joystick-d">D</span>
-          </div>
-          <div class="joystick-label-bottom">${btn.label}</div>
-        `;
+        el.innerHTML = buildKeyboardJoystickMarkup(btn.label);
+        joystickElements.push(el);
+        applyKeyboardJoystickState(el, joystickState);
       } else {
         el.innerHTML = `
           <div class="button-label">${btn.label}</div>
@@ -168,19 +211,40 @@ export function createButtonGrid(
   }
 
   return {
-    setButtonState(code: number, pressed: boolean) {
+    setButtonState(code: number, pressed: boolean, options?: { suppressPhysical?: boolean }) {
       const el = buttonElements.get(code);
-      if (el) {
+      if (el && !options?.suppressPhysical) {
         el.classList.toggle("active", pressed);
+      } else if (el && options?.suppressPhysical) {
+        el.classList.remove("active");
+      }
+
+      if (setKeyboardJoystickDirection(joystickState, code, pressed)) {
+        for (const joystickEl of joystickElements) {
+          applyKeyboardJoystickState(joystickEl, joystickState);
+        }
       }
     },
     clearAll() {
       for (const el of buttonElements.values()) {
         el.classList.remove("active");
       }
+      resetKeyboardJoystickState(joystickState);
+      for (const joystickEl of joystickElements) {
+        applyKeyboardJoystickState(joystickEl, joystickState);
+      }
+    },
+    setJoystickVector(x: number, y: number) {
+      setKeyboardJoystickAnalog(joystickState, x, y);
+      for (const joystickEl of joystickElements) {
+        applyKeyboardJoystickState(joystickEl, joystickState);
+      }
     },
     hasButton(code: number) {
       return buttonElements.has(code);
+    },
+    destroy() {
+      resizeObserver?.disconnect();
     },
   };
 }
