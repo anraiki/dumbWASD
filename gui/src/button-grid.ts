@@ -37,9 +37,14 @@ export interface ButtonGrid {
   ): void;
   clearAll(): void;
   setJoystickVector(x: number, y: number): void;
+  setSelected(code: number | null): void;
   /** Returns true if the code matched a known button in the layout. */
   hasButton(code: number): boolean;
   destroy(): void;
+}
+
+interface CreateButtonGridOptions {
+  onButtonClick?(button: DeviceLayout["buttons"][number], element: HTMLElement): void;
 }
 
 function getButtonSize(btn: DeviceLayout["buttons"][number]) {
@@ -50,7 +55,8 @@ function getButtonSize(btn: DeviceLayout["buttons"][number]) {
 
 export function createButtonGrid(
   container: HTMLElement,
-  layout: DeviceLayout
+  layout: DeviceLayout,
+  options: CreateButtonGridOptions = {},
 ): ButtonGrid {
   container.innerHTML = "";
 
@@ -61,6 +67,38 @@ export function createButtonGrid(
   const joystickState = createKeyboardJoystickState();
   const isCustomLayout = layout.device.layout_type === "custom";
   let resizeObserver: ResizeObserver | null = null;
+  let selectedCode: number | null = null;
+
+  const bindButtonInteractions = (
+    btn: DeviceLayout["buttons"][number],
+    element: HTMLElement,
+  ) => {
+    if (btn.is_joystick || !options.onButtonClick) {
+      return;
+    }
+
+    element.classList.add("button-bindable");
+    element.tabIndex = 0;
+    element.setAttribute("role", "button");
+    element.setAttribute("aria-label", `Configure ${btn.label} (${btn.id})`);
+
+    element.addEventListener("click", () => {
+      options.onButtonClick?.(btn, element);
+    });
+
+    element.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+
+    element.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      options.onButtonClick?.(btn, element);
+    });
+  };
 
   if (isCustomLayout) {
     // Custom absolute positioning layout
@@ -124,6 +162,7 @@ export function createButtonGrid(
         `;
       }
 
+      bindButtonInteractions(btn, el);
       buttonElements.set(btn.id, el);
       grid.appendChild(el);
     }
@@ -203,6 +242,7 @@ export function createButtonGrid(
         `;
       }
 
+      bindButtonInteractions(btn, el);
       buttonElements.set(btn.id, el);
       grid.appendChild(el);
     }
@@ -238,6 +278,17 @@ export function createButtonGrid(
       setKeyboardJoystickAnalog(joystickState, x, y);
       for (const joystickEl of joystickElements) {
         applyKeyboardJoystickState(joystickEl, joystickState);
+      }
+    },
+    setSelected(code: number | null) {
+      if (selectedCode !== null) {
+        buttonElements.get(selectedCode)?.classList.remove("selected");
+      }
+
+      selectedCode = code;
+
+      if (selectedCode !== null) {
+        buttonElements.get(selectedCode)?.classList.add("selected");
       }
     },
     hasButton(code: number) {

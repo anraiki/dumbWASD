@@ -13,6 +13,13 @@ import { showDevicePropertiesDialog } from "./device-properties-dialog";
 import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
 import { isKeyboardJoystickDirectionCode } from "./keyboard-joystick";
+import { createBindingPopover } from "./binding-popover";
+import {
+  getInputCodeLabel,
+  getMappingTargetLabel,
+  isSupportedMappingTarget,
+  type MappingTarget,
+} from "./input-codes";
 
 interface DeviceLayout {
   device: {
@@ -41,7 +48,7 @@ interface Profile {
   mappings: Array<{
     device?: string;
     from: number;
-    to: { type: string; code: number };
+    to: MappingTarget;
   }>;
 }
 
@@ -91,6 +98,19 @@ const AZERON_JOYSTICK_SPAN = 512;
 
 export async function createApp(container: HTMLElement) {
   const appWindow = getCurrentWindow();
+
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (target.isContentEditable) {
+      return true;
+    }
+
+    const editable = target.closest("input, textarea, select, [contenteditable=\"true\"]");
+    return editable instanceof HTMLElement;
+  };
 
   container.innerHTML = `
     <div class="loading-overlay" id="loading-overlay">
@@ -223,6 +243,17 @@ export async function createApp(container: HTMLElement) {
   const overlayBtn = container.querySelector<HTMLButtonElement>("#btn-toggle-overlay")!;
   const macroBtn = container.querySelector<HTMLButtonElement>("#btn-toggle-macros")!;
   const macroStudio = createMacroStudio();
+  const bindingPopover = createBindingPopover();
+
+  const handleGlobalSelectAll = (event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+      if (!isEditableTarget(event.target)) {
+        event.preventDefault();
+      }
+    }
+  };
+
+  document.addEventListener("keydown", handleGlobalSelectAll, true);
 
   async function syncWindowChrome() {
     try {
@@ -267,6 +298,8 @@ export async function createApp(container: HTMLElement) {
 
   window.addEventListener("beforeunload", () => {
     unlistenWindowResize();
+    document.removeEventListener("keydown", handleGlobalSelectAll, true);
+    bindingPopover.destroy();
   }, { once: true });
 
   await syncWindowChrome();
@@ -292,21 +325,6 @@ export async function createApp(container: HTMLElement) {
 
   hamburgerBtn.addEventListener("click", toggleDrawer);
 
-  // ── Evdev key names ──
-  const EVDEV_NAMES: Record<number, string> = {
-    1:"ESC",2:"1",3:"2",4:"3",5:"4",6:"5",7:"6",8:"7",9:"8",10:"9",11:"0",
-    12:"-",13:"=",14:"BACKSPACE",15:"TAB",16:"Q",17:"W",18:"E",19:"R",20:"T",
-    21:"Y",22:"U",23:"I",24:"O",25:"P",26:"[",27:"]",28:"ENTER",29:"L_CTRL",
-    30:"A",31:"S",32:"D",33:"F",34:"G",35:"H",36:"J",37:"K",38:"L",39:";",
-    40:"'",41:"`",42:"L_SHIFT",43:"\\",44:"Z",45:"X",46:"C",47:"V",48:"B",
-    49:"N",50:"M",51:",",52:".",53:"/",54:"R_SHIFT",56:"L_ALT",57:"SPACE",
-    58:"CAPSLOCK",59:"F1",60:"F2",61:"F3",62:"F4",63:"F5",64:"F6",65:"F7",
-    66:"F8",67:"F9",68:"F10",69:"NUMLOCK",87:"F11",88:"F12",96:"NUMPAD_ENTER",
-    97:"R_CTRL",100:"R_ALT",103:"UP",105:"LEFT",106:"RIGHT",108:"DOWN",
-    110:"INSERT",111:"DELETE",113:"MUTE",114:"VOL_DOWN",115:"VOL_UP",
-    272:"MOUSE_L",273:"MOUSE_R",274:"MOUSE_M",275:"MOUSE_4",276:"MOUSE_5",
-  };
-
   const REL_AXIS_NAMES: Record<number, string> = {
     0: "REL_X",
     1: "REL_Y",
@@ -326,7 +344,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function addEventLogEntry(code: number, pressed: boolean, devicePath?: string, deviceName?: string) {
-    const name = EVDEV_NAMES[code] || `?`;
+    const name = getInputCodeLabel(code);
     const action = pressed ? "PRESS" : "RELEASE";
     const sourceEntry = devicePath ? findDeviceEntryByPath(devicePath) : null;
     const sourceLabel = deviceName || sourceEntry?.name || devicePath || "Unknown device";
@@ -564,6 +582,84 @@ export async function createApp(container: HTMLElement) {
   function isSameProfileDevice(a: ProfileDevice | null, b: ProfileDevice | null): boolean {
     if (!a || !b) return false;
     return deviceIdentity(a) === deviceIdentity(b);
+  }
+
+  function clearSelectedButtonBindingState() {
+    buttonGrid?.setSelected(null);
+  }
+
+  function closeBindingPopover() {
+    bindingPopover.close();
+    clearSelectedButtonBindingState();
+  }
+
+  function getLegacyButtonMapping(code: number): MappingTarget | null {
+    if (!currentProfile) {
+      return null;
+    }
+
+    const match = currentProfile.mappings.find((mapping) =>
+      mapping.from === code && isSupportedMappingTarget(mapping.to)
+    );
+
+    return match ? { ...match.to } : null;
+  }
+
+  async function persistLegacyButtonMapping(code: number, nextTarget: MappingTarget | null) {
+    if (!currentProfile || !currentProfileName) {
+      throw new Error("Select a profile first");
+    }
+
+    const nextMappings = currentProfile.mappings.filter((mapping) => mapping.from !== code);
+    if (nextTarget) {
+      nextMappings.push({
+        from: code,
+        to: { ...nextTarget },
+      });
+    }
+
+    const nextProfile: Profile = {
+      ...currentProfile,
+      mappings: nextMappings,
+    };
+
+    await invoke("save_profile", {
+      name: currentProfileName,
+      profile: nextProfile,
+    });
+
+    currentProfile = nextProfile;
+  }
+
+  function openBindingPopoverForButton(
+    button: { id: number; label: string },
+    element: HTMLElement,
+  ) {
+    if (!currentProfile || !currentProfileName || isEditMode || isMacroMode) {
+      return;
+    }
+
+    if (bindingPopover.isOpenFor(button.id)) {
+      closeBindingPopover();
+      return;
+    }
+
+    const currentBinding = getLegacyButtonMapping(button.id);
+    buttonGrid?.setSelected(button.id);
+    bindingPopover.open({
+      anchorEl: element,
+      button: { code: button.id, label: button.label },
+      currentBinding,
+      onClose: clearSelectedButtonBindingState,
+      onSave: async (nextBinding) => {
+        await persistLegacyButtonMapping(button.id, nextBinding);
+        statusEl.textContent = `${button.label} mapped to ${getMappingTargetLabel(nextBinding)}`;
+      },
+      onReset: async () => {
+        await persistLegacyButtonMapping(button.id, null);
+        statusEl.textContent = `${button.label} mapping cleared`;
+      },
+    });
   }
 
   async function persistSelectedDeviceLayout(layoutName: string) {
@@ -1066,7 +1162,11 @@ export async function createApp(container: HTMLElement) {
 
     buttonGrid?.destroy();
     gridContainer.innerHTML = "";
-    buttonGrid = createButtonGrid(gridContainer, currentLayout);
+    buttonGrid = createButtonGrid(gridContainer, currentLayout, {
+      onButtonClick(button, element) {
+        openBindingPopoverForButton(button, element);
+      },
+    });
     buttonGrid.clearAll();
     for (const code of pressedButtons) {
       buttonGrid.setButtonState(code, true);
@@ -1109,6 +1209,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function renderWorkspace() {
+    closeBindingPopover();
     syncAuxPanels();
 
     if (isMacroMode) {
