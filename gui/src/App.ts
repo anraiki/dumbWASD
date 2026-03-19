@@ -20,6 +20,27 @@ import {
   isSupportedMappingTarget,
   type MappingTarget,
 } from "./input-codes";
+import logitechG502XSvgMarkup from "./assets/logitech-g502-x.svg?raw";
+
+const INLINE_LOGITECH_G502_X_SVG = logitechG502XSvgMarkup
+  .replace(/<\?xml[\s\S]*?\?>\s*/i, "")
+  .replace(/<!--[\s\S]*?-->\s*/g, "")
+  .trim();
+const DEVICE_ARTWORK_BUTTON_CODES = new Map<number, "LMB" | "RMB">([
+  [272, "LMB"],
+  [273, "RMB"],
+]);
+const DEVICE_ARTWORK_BUTTON_LABELS = new Map<number, string>([
+  [272, "Mouse Left"],
+  [273, "Mouse Right"],
+]);
+
+interface DeviceArtworkPreviewHandle {
+  setButtonState(code: number, pressed: boolean): void;
+  setSelected(code: number | null): void;
+  clearAll(): void;
+  destroy(): void;
+}
 
 interface DeviceLayout {
   device: {
@@ -81,6 +102,8 @@ interface MonitoringRequest {
   devicePaths: string[];
   label: string;
   useAzeronHid: boolean;
+  legacyMappings: Profile["mappings"];
+  suppressMappedInputs: boolean;
 }
 
 interface DeviceRegistryToml {
@@ -392,6 +415,7 @@ export async function createApp(container: HTMLElement) {
   let monitoring = false;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
+  let deviceArtworkPreview: DeviceArtworkPreviewHandle | null = null;
   let unlistenButtonState: (() => void) | null = null;
   let unlistenAxisState: (() => void) | null = null;
   let unlistenAzeronJoystickState: (() => void) | null = null;
@@ -399,6 +423,7 @@ export async function createApp(container: HTMLElement) {
   let isMacroMode = false;
   let listenAllDevices = false;
   let monitoredPathsKey = "";
+  let runtimeRemapActive = false;
   let closeDeviceContextMenu: (() => void) | null = null;
   const pressedButtons = new Set<number>();
   const joystickEmulatedDirectionCodes = new Set<number>();
@@ -416,13 +441,194 @@ export async function createApp(container: HTMLElement) {
     statusEl.textContent = `Error loading devices: ${e}`;
   }
 
+  function normalizeDeviceLabel(value?: string | null): string {
+    return (value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function isG502XDevice(device: ProfileDevice | null): boolean {
+    if (!device || device.vendor_id !== 0x046D) {
+      return false;
+    }
+
+    const labels = [device.name, device.raw_name]
+      .map((value) => normalizeDeviceLabel(value))
+      .filter(Boolean);
+
+    return labels.some((label) => label.includes("g502 x"));
+  }
+
+  function normalizeArtworkToken(value?: string | null): string {
+    return (value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  function createDeviceArtworkPreview(
+    svg: SVGElement,
+    options: {
+      onButtonClick?(button: { id: number; label: string }, element: SVGElement): void;
+    } = {},
+  ): DeviceArtworkPreviewHandle {
+    const aliases = new Map<string, Set<string>>([
+      ["LMB", new Set(["LMB", "BUTTON_LMB", "LEFT", "BUTTON_LEFT", "MOUSE_LEFT"])],
+      ["RMB", new Set(["RMB", "BUTTON_RMB", "RIGHT", "BUTTON_RIGHT", "MOUSE_RIGHT"])],
+    ]);
+    const reverseCodes = new Map<string, number>();
+    for (const [code, key] of DEVICE_ARTWORK_BUTTON_CODES) {
+      reverseCodes.set(key, code);
+    }
+    const targets = new Map<string, SVGElement[]>();
+    for (const key of aliases.keys()) {
+      targets.set(key, []);
+    }
+    let selectedCode: number | null = null;
+
+    const elements = svg.querySelectorAll<SVGElement>("*");
+    for (const element of elements) {
+      const tokens = [
+        element.getAttribute("id"),
+        element.getAttribute("label"),
+        element.getAttribute("inkscape:label"),
+      ]
+        .map((value) => normalizeArtworkToken(value))
+        .filter(Boolean);
+
+      for (const [key, names] of aliases) {
+        if (tokens.some((token) => names.has(token))) {
+          element.classList.add("device-artwork-hit-target");
+          targets.get(key)!.push(element);
+          const code = reverseCodes.get(key);
+          const label = code ? DEVICE_ARTWORK_BUTTON_LABELS.get(code) : null;
+
+          if (code && label && options.onButtonClick) {
+            element.classList.add("device-artwork-bindable");
+            element.setAttribute("tabindex", "0");
+            element.setAttribute("role", "button");
+            element.setAttribute("aria-label", `Configure ${label} (${code})`);
+
+            element.addEventListener("click", () => {
+              options.onButtonClick?.({ id: code, label }, element);
+            });
+
+            element.addEventListener("mousedown", (event) => {
+              event.preventDefault();
+            });
+
+            element.addEventListener("keydown", (event) => {
+              if (event.key !== "Enter" && event.key !== " ") {
+                return;
+              }
+
+              event.preventDefault();
+              options.onButtonClick?.({ id: code, label }, element);
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      setButtonState(code: number, pressed: boolean) {
+        const key = DEVICE_ARTWORK_BUTTON_CODES.get(code);
+        if (!key) {
+          return;
+        }
+
+        for (const element of targets.get(key) || []) {
+          element.classList.toggle("active", pressed);
+        }
+      },
+      setSelected(code: number | null) {
+        if (selectedCode !== null) {
+          const selectedKey = DEVICE_ARTWORK_BUTTON_CODES.get(selectedCode);
+          for (const element of (selectedKey && targets.get(selectedKey)) || []) {
+            element.classList.remove("selected");
+          }
+        }
+
+        selectedCode = code;
+        if (selectedCode === null) {
+          return;
+        }
+
+        const selectedKey = DEVICE_ARTWORK_BUTTON_CODES.get(selectedCode);
+        for (const element of (selectedKey && targets.get(selectedKey)) || []) {
+          element.classList.add("selected");
+        }
+      },
+      clearAll() {
+        for (const elementsForKey of targets.values()) {
+          for (const element of elementsForKey) {
+            element.classList.remove("active");
+          }
+        }
+      },
+      destroy() {
+        for (const elementsForKey of targets.values()) {
+          for (const element of elementsForKey) {
+            element.classList.remove(
+              "active",
+              "selected",
+              "device-artwork-hit-target",
+              "device-artwork-bindable",
+            );
+            element.removeAttribute("tabindex");
+            element.removeAttribute("role");
+            element.removeAttribute("aria-label");
+          }
+        }
+      },
+    };
+  }
+
   function deviceIdentity(device: { id?: string; vendor_id: number; product_id: number }): string {
     return device.id || `${device.vendor_id}:${device.product_id}`;
   }
 
-  function findDeviceEntry(device: { id?: string; vendor_id: number; product_id: number }): DeviceEntry | null {
+  function findDeviceEntry(device: {
+    id?: string;
+    vendor_id: number;
+    product_id: number;
+    name?: string;
+    raw_name?: string;
+  }): DeviceEntry | null {
     const identity = deviceIdentity(device);
-    return allDevices.find((entry) => entry.id === identity) ?? null;
+    const exactMatch = allDevices.find((entry) => entry.id === identity);
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    const candidates = allDevices.filter(
+      (entry) => entry.vendor_id === device.vendor_id && entry.product_id === device.product_id
+    );
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const aliases = new Set(
+      [device.name, device.raw_name]
+        .map((value) => normalizeDeviceLabel(value))
+        .filter(Boolean)
+    );
+
+    const namedMatches = candidates.filter((entry) => {
+      const entryLabels = [entry.name, entry.raw_name, entry.id]
+        .map((value) => normalizeDeviceLabel(value))
+        .filter(Boolean);
+      return entryLabels.some((label) => aliases.has(label));
+    });
+
+    if (namedMatches.length === 1) {
+      return namedMatches[0];
+    }
+
+    return candidates.length === 1 ? candidates[0] : null;
   }
 
   function getProfileDeviceKind(entry: DeviceEntry | null): ProfileDeviceKind | undefined {
@@ -571,11 +777,19 @@ export async function createApp(container: HTMLElement) {
 
   function hydrateProfileDevices(devices: ProfileDevice[]): ProfileDevice[] {
     return devices.map((device) => {
-      if (device.device_kind) return device;
-      const device_kind = getProfileDeviceKind(
-        findDeviceEntry(device)
-      );
-      return device_kind ? { ...device, device_kind } : device;
+      const entry = findDeviceEntry(device);
+      const device_kind = device.device_kind ?? getProfileDeviceKind(entry);
+
+      if (!entry && !device_kind) {
+        return device;
+      }
+
+      return {
+        ...device,
+        id: device.id || entry?.id,
+        raw_name: device.raw_name || entry?.raw_name,
+        device_kind,
+      };
     });
   }
 
@@ -586,6 +800,7 @@ export async function createApp(container: HTMLElement) {
 
   function clearSelectedButtonBindingState() {
     buttonGrid?.setSelected(null);
+    deviceArtworkPreview?.setSelected(null);
   }
 
   function closeBindingPopover() {
@@ -603,6 +818,18 @@ export async function createApp(container: HTMLElement) {
     );
 
     return match ? { ...match.to } : null;
+  }
+
+  async function emitLegacyButtonMapping(code: number, pressed: boolean) {
+    const mapping = getLegacyButtonMapping(code);
+    if (!mapping) {
+      return;
+    }
+
+    await invoke("emit_output_target", {
+      target: mapping,
+      pressed,
+    });
   }
 
   async function persistLegacyButtonMapping(code: number, nextTarget: MappingTarget | null) {
@@ -629,11 +856,12 @@ export async function createApp(container: HTMLElement) {
     });
 
     currentProfile = nextProfile;
+    await syncMonitoringScope(true);
   }
 
   function openBindingPopoverForButton(
     button: { id: number; label: string },
-    element: HTMLElement,
+    element: Element,
   ) {
     if (!currentProfile || !currentProfileName || isEditMode || isMacroMode) {
       return;
@@ -646,6 +874,7 @@ export async function createApp(container: HTMLElement) {
 
     const currentBinding = getLegacyButtonMapping(button.id);
     buttonGrid?.setSelected(button.id);
+    deviceArtworkPreview?.setSelected(button.id);
     bindingPopover.open({
       anchorEl: element,
       button: { code: button.id, label: button.label },
@@ -776,7 +1005,18 @@ export async function createApp(container: HTMLElement) {
     return [...new Set(allDevices.flatMap((device) => device.paths))];
   }
 
+  function shouldSuppressMappedInputs(): boolean {
+    if (isMacroMode || listenAllDevices || !selectedDeviceInBar || !currentProfile?.mappings.length) {
+      return false;
+    }
+
+    return selectedDeviceInBar.device_kind === "mouse" || selectedDeviceInBar.device_kind === "keyboard";
+  }
+
   function buildMonitoringRequest(): MonitoringRequest | null {
+    const legacyMappings = currentProfile?.mappings ?? [];
+    const suppressMappedInputs = shouldSuppressMappedInputs();
+
     if (isMacroMode) {
       const keyboardPaths = allDevices
         .filter((device) => device.has_keyboard)
@@ -796,6 +1036,8 @@ export async function createApp(container: HTMLElement) {
         devicePaths,
         label: "Keyboards + curated gamepads",
         useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
+        legacyMappings,
+        suppressMappedInputs: false,
       };
     }
 
@@ -807,6 +1049,8 @@ export async function createApp(container: HTMLElement) {
         devicePaths,
         label: "All detected devices",
         useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
+        legacyMappings,
+        suppressMappedInputs: false,
       };
     }
 
@@ -819,6 +1063,8 @@ export async function createApp(container: HTMLElement) {
       devicePaths: entry.paths,
       label: entry.name,
       useAzeronHid: entry.is_azeron || selectedDeviceInBar.device_kind === "azeron",
+      legacyMappings,
+      suppressMappedInputs,
     };
   }
 
@@ -831,6 +1077,7 @@ export async function createApp(container: HTMLElement) {
         await stopMonitoring();
       } else {
         monitoredPathsKey = "";
+        runtimeRemapActive = false;
         macroStudio.setMonitoringActive(false);
         syncAuxPanels();
       }
@@ -1208,11 +1455,55 @@ export async function createApp(container: HTMLElement) {
     });
   }
 
+  function renderDeviceArtworkPreview() {
+    deviceArtworkPreview?.destroy();
+    deviceArtworkPreview = null;
+
+    if (!isG502XDevice(selectedDeviceInBar)) {
+      gridContainer.innerHTML = "";
+      return;
+    }
+
+    gridContainer.innerHTML = `
+      <section class="device-artwork-preview" aria-label="Logitech G502 X preview">
+        <div class="device-artwork-frame"></div>
+      </section>
+    `;
+
+    const frame = gridContainer.querySelector<HTMLElement>(".device-artwork-frame");
+    if (!frame) {
+      return;
+    }
+
+    frame.innerHTML = INLINE_LOGITECH_G502_X_SVG;
+
+    const svg = frame.querySelector<SVGElement>("svg");
+    if (!svg) {
+      return;
+    }
+
+    svg.classList.add("device-artwork-svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+
+    deviceArtworkPreview = createDeviceArtworkPreview(svg, {
+      onButtonClick(button, element) {
+        openBindingPopoverForButton(button, element);
+      },
+    });
+    deviceArtworkPreview.clearAll();
+    for (const code of pressedButtons) {
+      deviceArtworkPreview.setButtonState(code, true);
+    }
+  }
+
   function renderWorkspace() {
     closeBindingPopover();
     syncAuxPanels();
 
     if (isMacroMode) {
+      deviceArtworkPreview?.destroy();
+      deviceArtworkPreview = null;
       if (layoutEditor) {
         try { layoutEditor.destroy(); } catch (_) {}
         layoutEditor = null;
@@ -1230,11 +1521,18 @@ export async function createApp(container: HTMLElement) {
     macroStudio.unmount();
 
     if (!currentLayout) {
+      if (layoutEditor) {
+        try { layoutEditor.destroy(); } catch (_) {}
+        layoutEditor = null;
+      }
       buttonGrid?.destroy();
       buttonGrid = null;
-      gridContainer.innerHTML = "";
+      renderDeviceArtworkPreview();
       return;
     }
+
+    deviceArtworkPreview?.destroy();
+    deviceArtworkPreview = null;
 
     if (isEditMode) {
       renderEditMode();
@@ -1302,8 +1600,11 @@ export async function createApp(container: HTMLElement) {
       await invoke("start_monitoring", {
         devicePaths: request.devicePaths,
         useAzeronHid: request.useAzeronHid,
+        legacyMappings: request.legacyMappings,
+        suppressMappedInputs: request.suppressMappedInputs,
       });
       monitoring = true;
+      runtimeRemapActive = request.suppressMappedInputs;
       monitoredPathsKey = [...request.devicePaths].sort().join("|");
       reconnectBtn.style.display = "none";
       macroStudio.setMonitoringActive(true);
@@ -1334,6 +1635,13 @@ export async function createApp(container: HTMLElement) {
         if (layoutEditor) {
           layoutEditor.setButtonState(code, pressed, {
             suppressPhysical: suppressPhysicalHighlight,
+          });
+        }
+        deviceArtworkPreview?.setButtonState(code, pressed);
+
+        if (!runtimeRemapActive) {
+          void emitLegacyButtonMapping(code, pressed).catch((error) => {
+            statusEl.textContent = `Error applying mapping: ${error}`;
           });
         }
       });
@@ -1378,12 +1686,14 @@ export async function createApp(container: HTMLElement) {
     }
 
     monitoring = false;
+    runtimeRemapActive = false;
     monitoredPathsKey = "";
     connectionIndicator.className = "connection-indicator disconnected";
     connectionIndicator.title = "Disconnected";
     reconnectBtn.style.display = "none";
     buttonGrid?.clearAll();
     layoutEditor?.clearAll();
+    deviceArtworkPreview?.clearAll();
     pressedButtons.clear();
     joystickEmulatedDirectionCodes.clear();
     joystickAxisValues.clear();

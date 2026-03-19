@@ -3,12 +3,12 @@ name = "Default"
 device_name = "Azeron Cyborg"
 
 [[devices]]
-id = ""
+id = "5840:4284"
 vendor_id = 5840
 product_id = 4284
 name = "Azeron Keypad"
-raw_name = ""
-layout = ""
+raw_name = "Azeron LTD Azeron Keypad"
+layout = "azeron-cyborg"
 device_kind = "azeron"
 active_binding_preset = ""
 binding_presets = []
@@ -25,11 +25,11 @@ active_binding_preset = ""
 binding_presets = []
 
 [[devices]]
-id = ""
+id = "1133:50503:Logitech USB Receiver"
 vendor_id = 1133
-product_id = 49304
-name = "Logitech G502 X LIGHTSPEED"
-raw_name = ""
+product_id = 50503
+name = "G502 X LIGHTSPEED"
+raw_name = "Logitech USB Receiver"
 layout = ""
 device_kind = "mouse"
 active_binding_preset = ""

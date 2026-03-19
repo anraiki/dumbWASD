@@ -5,12 +5,13 @@ mod events;
 use dumbwasd_core::core::config;
 use dumbwasd_core::core::event::OutputAction;
 use dumbwasd_core::core::layout::{self, DeviceLayout};
-use dumbwasd_core::core::profile::{Profile, ProfileMeta};
+use dumbwasd_core::core::profile::{Mapping, OutputTarget, Profile, ProfileMeta};
 use dumbwasd_core::devices::{self, registry, DeviceInfo};
 use dumbwasd_core::platform::{InputBackend, OutputBackend};
 use events::MonitorState;
 use indexmap::IndexMap;
 use serde::Serialize;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -43,6 +44,11 @@ struct DeviceRegistryToml {
 struct ScriptControl {
     cancel_version: AtomicU64,
     running_scripts: AtomicUsize,
+}
+
+#[derive(Default)]
+struct OutputState {
+    backend: Mutex<Option<Box<dyn OutputBackend>>>,
 }
 
 impl Default for ScriptControl {
@@ -275,10 +281,19 @@ fn save_layout(name: String, layout: DeviceLayout) -> Result<String, String> {
 async fn start_monitoring(
     device_paths: Vec<String>,
     use_azeron_hid: bool,
+    legacy_mappings: Vec<Mapping>,
+    suppress_mapped_inputs: bool,
     app: tauri::AppHandle,
     state: tauri::State<'_, MonitorState>,
 ) -> Result<(), String> {
-    events::start_monitoring(device_paths, use_azeron_hid, app, &state)
+    events::start_monitoring(
+        device_paths,
+        use_azeron_hid,
+        legacy_mappings,
+        suppress_mapped_inputs,
+        app,
+        &state,
+    )
         .await
         .map_err(|e| format!("{e:#}"))
 }
@@ -303,6 +318,39 @@ fn get_profile(name: String) -> Result<Profile, String> {
 fn save_profile(name: String, profile: Profile) -> Result<String, String> {
     let path = profile.save(&name).map_err(|e| format!("{e:#}"))?;
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn emit_output_target(
+    target: OutputTarget,
+    pressed: bool,
+    state: tauri::State<'_, OutputState>,
+) -> Result<(), String> {
+    let mut backend_guard = state
+        .backend
+        .lock()
+        .map_err(|_| "Failed to lock output backend".to_string())?;
+
+    if backend_guard.is_none() {
+        let backend = dumbwasd_core::platform::create_output_backend()
+            .map_err(|e| format!("{e:#}"))?;
+        *backend_guard = Some(Box::new(backend));
+    }
+
+    let backend = backend_guard
+        .as_mut()
+        .ok_or_else(|| "Output backend unavailable".to_string())?;
+
+    let actions = target.actions(pressed);
+    if actions.is_empty() {
+        return Ok(());
+    }
+
+    for action in &actions {
+        backend.emit(action).map_err(|e| format!("{e:#}"))?;
+    }
+    backend.emit_sync().map_err(|e| format!("{e:#}"))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -448,6 +496,7 @@ fn main() {
     tauri::Builder::default()
         .manage(MonitorState::default())
         .manage(ScriptControl::default())
+        .manage(OutputState::default())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -480,6 +529,7 @@ fn main() {
             list_profiles,
             get_profile,
             save_profile,
+            emit_output_target,
             create_profile,
             toggle_overlay,
             run_test_macro,

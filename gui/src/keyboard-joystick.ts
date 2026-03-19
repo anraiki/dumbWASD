@@ -36,7 +36,7 @@ interface KeyboardJoystickDirectionConfig {
 }
 
 const MAX_PUCK_OFFSET_PX = 26;
-const IDLE_DISPLAY_TEXT = "Keyboard Joystick";
+export const KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT = "Keyboard Joystick";
 const ANALOG_DIRECTION_THRESHOLD = 0.24;
 const ANALOG_ACTIVE_EPSILON = 0.04;
 
@@ -138,25 +138,11 @@ function getKeyboardJoystickPresentation(state: KeyboardJoystickState): Keyboard
 
   return {
     resolvedDirections,
-    displayText: activeLabels.length > 0 ? activeLabels.join(" + ") : IDLE_DISPLAY_TEXT,
+    displayText: activeLabels.length > 0 ? activeLabels.join(" + ") : KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT,
     isActive: hasAnalog ? magnitude >= ANALOG_ACTIVE_EPSILON : activeLabels.length > 0,
     offsetX,
     offsetY,
   };
-}
-
-export function buildKeyboardJoystickMarkup(label: string): string {
-  return `
-    <div class="joystick-display" data-joystick-display>${IDLE_DISPLAY_TEXT}</div>
-    <div class="joystick-circle">
-      <div class="joystick-puck" data-joystick-puck></div>
-      <span class="joystick-dir joystick-w" data-joystick-dir="up">W</span>
-      <span class="joystick-dir joystick-a" data-joystick-dir="left">A</span>
-      <span class="joystick-dir joystick-s" data-joystick-dir="down">S</span>
-      <span class="joystick-dir joystick-d" data-joystick-dir="right">D</span>
-    </div>
-    <div class="joystick-label-bottom">${label}</div>
-  `;
 }
 
 function getKeyboardJoystickBindings(root: ParentNode): KeyboardJoystickBindings {

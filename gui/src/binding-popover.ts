@@ -1,6 +1,9 @@
 import {
-  MAPPING_TARGET_OPTIONS,
   getMappingTargetLabel,
+  getInputCodeFromKeyboardEvent,
+  getMappingTargetFromPointerButton,
+  isModifierInputCode,
+  normalizeShortcutModifiers,
   type MappingTarget,
 } from "./input-codes";
 
@@ -10,7 +13,7 @@ interface BindingPopoverButton {
 }
 
 interface BindingPopoverOptions {
-  anchorEl: HTMLElement;
+  anchorEl: Element;
   button: BindingPopoverButton;
   currentBinding: MappingTarget | null;
   onSave(nextBinding: MappingTarget): Promise<void> | void;
@@ -27,28 +30,6 @@ export interface BindingPopoverController {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-function toSelectValue(binding: MappingTarget | null): string {
-  if (!binding) {
-    return "";
-  }
-
-  return `${binding.type}:${binding.code}`;
-}
-
-function fromSelectValue(value: string): MappingTarget | null {
-  if (!value) {
-    return null;
-  }
-
-  const [type, codeText] = value.split(":");
-  const code = Number(codeText);
-  if (!Number.isFinite(code) || (type !== "key" && type !== "mouse_button")) {
-    return null;
-  }
-
-  return { type, code };
 }
 
 export function createBindingPopover(): BindingPopoverController {
@@ -68,10 +49,13 @@ export function createBindingPopover(): BindingPopoverController {
 
   let currentOptions: BindingPopoverOptions | null = null;
   let currentButtonCode: number | null = null;
-  let currentAnchorEl: HTMLElement | null = null;
-  let currentSelection = "";
+  let currentAnchorEl: Element | null = null;
+  let currentSelection: MappingTarget | null = null;
   let currentError = "";
   let pending = false;
+  let listening = false;
+  let captureModifiers = new Set<number>();
+  let modifierOnlyCandidate: number | null = null;
 
   const handlePointerDown = (event: PointerEvent) => {
     if (!currentOptions) {
@@ -79,10 +63,30 @@ export function createBindingPopover(): BindingPopoverController {
     }
 
     const target = event.target as Node | null;
+    const captureEl = popover.querySelector<HTMLElement>(".binding-popover-capture");
+    if (
+      listening
+      && target
+      && captureEl?.contains(target)
+    ) {
+      const nextBinding = getMappingTargetFromPointerButton(event.button);
+      if (nextBinding) {
+        event.preventDefault();
+        event.stopPropagation();
+        currentSelection = nextBinding;
+        currentError = "";
+        stopListening();
+        render();
+        positionPopover();
+      }
+      return;
+    }
+
     if (target && (popover.contains(target) || currentAnchorEl?.contains(target))) {
       return;
     }
 
+    stopListening();
     close();
   };
 
@@ -93,8 +97,72 @@ export function createBindingPopover(): BindingPopoverController {
 
     if (event.key === "Escape") {
       event.preventDefault();
+      if (listening) {
+        stopListening();
+        render();
+        positionPopover();
+        return;
+      }
       close();
+      return;
     }
+
+    if (!listening || pending) {
+      return;
+    }
+
+    const code = getInputCodeFromKeyboardEvent(event);
+    if (!code) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (isModifierInputCode(code)) {
+      if (!event.repeat) {
+        captureModifiers.add(code);
+        modifierOnlyCandidate = code;
+        currentError = "";
+        render();
+        positionPopover();
+      }
+      return;
+    }
+
+    const modifiers = normalizeShortcutModifiers([...captureModifiers]);
+    currentSelection = modifiers.length > 0
+      ? { type: "shortcut", modifiers, key: code }
+      : { type: "key", code };
+    currentError = "";
+    stopListening();
+    render();
+    positionPopover();
+  };
+
+  const handleKeyUp = (event: KeyboardEvent) => {
+    if (!currentOptions || !listening || pending) {
+      return;
+    }
+
+    const code = getInputCodeFromKeyboardEvent(event);
+    if (!code || !isModifierInputCode(code)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (modifierOnlyCandidate === code && captureModifiers.size === 1) {
+      currentSelection = { type: "key", code };
+      currentError = "";
+      stopListening();
+      render();
+      positionPopover();
+      return;
+    }
+
+    captureModifiers.delete(code);
   };
 
   const handleWindowChange = () => {
@@ -116,7 +184,17 @@ export function createBindingPopover(): BindingPopoverController {
       return;
     }
 
-    const activeLabel = getMappingTargetLabel(fromSelectValue(currentSelection));
+    const activeLabel = getMappingTargetLabel(currentSelection);
+    const captureTitle = listening
+      ? captureModifiers.size
+        ? `${normalizeShortcutModifiers([...captureModifiers])
+          .map((code) => getMappingTargetLabel({ type: "key", code }))
+          .join(" + ")} + ...`
+        : "Press a key, shortcut, or mouse button"
+      : activeLabel;
+    const captureHint = listening
+      ? "Press another key to finish a shortcut, or press Esc to cancel."
+      : "Click here, then press a key, shortcut, or mouse button.";
     popover.innerHTML = `
       <div class="binding-popover-header">
         <div class="binding-popover-kicker">View binding</div>
@@ -135,7 +213,15 @@ export function createBindingPopover(): BindingPopoverController {
       </div>
       <label class="binding-popover-field">
         <span class="binding-popover-field-label">Bind to</span>
-        <select class="binding-popover-select"></select>
+        <button
+          type="button"
+          class="binding-popover-capture"
+          ${pending ? "disabled" : ""}
+          ${listening ? 'data-listening="true"' : ""}
+        >
+          <span class="binding-popover-capture-value">${captureTitle}</span>
+          <span class="binding-popover-capture-hint">${captureHint}</span>
+        </button>
       </label>
       <p class="binding-popover-help">
         This writes a direct profile remap for the selected button.
@@ -145,7 +231,7 @@ export function createBindingPopover(): BindingPopoverController {
         <button type="button" class="btn binding-popover-reset"${options.currentBinding ? "" : " disabled"}>Reset</button>
         <div class="binding-popover-action-group">
           <button type="button" class="btn binding-popover-cancel">Cancel</button>
-          <button type="button" class="btn binding-popover-save"${fromSelectValue(currentSelection) ? "" : " disabled"}>Save</button>
+          <button type="button" class="btn binding-popover-save"${currentSelection ? "" : " disabled"}>Save</button>
         </div>
       </div>
     `;
@@ -153,55 +239,46 @@ export function createBindingPopover(): BindingPopoverController {
     const titleEl = popover.querySelector<HTMLElement>(".binding-popover-title");
     const closeBtn = popover.querySelector<HTMLButtonElement>(".binding-popover-close");
     const previewValueEl = popover.querySelector<HTMLElement>(".binding-popover-preview-value");
-    const selectEl = popover.querySelector<HTMLSelectElement>(".binding-popover-select");
+    const captureButtonEl = popover.querySelector<HTMLButtonElement>(".binding-popover-capture");
     const errorEl = popover.querySelector<HTMLElement>(".binding-popover-error");
     const resetBtn = popover.querySelector<HTMLButtonElement>(".binding-popover-reset");
     const cancelBtn = popover.querySelector<HTMLButtonElement>(".binding-popover-cancel");
     const saveBtn = popover.querySelector<HTMLButtonElement>(".binding-popover-save");
 
-    if (!titleEl || !closeBtn || !previewValueEl || !selectEl || !errorEl || !resetBtn || !cancelBtn || !saveBtn) {
+    if (
+      !titleEl
+      || !closeBtn
+      || !previewValueEl
+      || !captureButtonEl
+      || !errorEl
+      || !resetBtn
+      || !cancelBtn
+      || !saveBtn
+    ) {
       return;
     }
 
     titleEl.textContent = options.button.label;
-
-    selectEl.innerHTML = "";
-
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Select an output…";
-    selectEl.appendChild(placeholder);
-
-    const groupedOptions = new Map<string, HTMLOptGroupElement>();
-    for (const option of MAPPING_TARGET_OPTIONS) {
-      let group = groupedOptions.get(option.group);
-      if (!group) {
-        group = document.createElement("optgroup");
-        group.label = option.group;
-        groupedOptions.set(option.group, group);
-        selectEl.appendChild(group);
-      }
-
-      const optionEl = document.createElement("option");
-      optionEl.value = `${option.type}:${option.code}`;
-      optionEl.textContent = option.label;
-      group.appendChild(optionEl);
-    }
-
-    selectEl.value = currentSelection;
-    selectEl.disabled = pending;
     closeBtn.disabled = pending;
     cancelBtn.disabled = pending;
     resetBtn.disabled = pending || !options.currentBinding;
-    saveBtn.disabled = pending || !fromSelectValue(currentSelection);
+    saveBtn.disabled = pending || !currentSelection;
     previewValueEl.textContent = activeLabel;
     errorEl.hidden = !currentError;
     errorEl.textContent = currentError;
 
     closeBtn.addEventListener("click", () => close());
     cancelBtn.addEventListener("click", () => close());
-    selectEl.addEventListener("change", () => {
-      currentSelection = selectEl.value;
+    captureButtonEl.addEventListener("click", () => {
+      if (pending) {
+        return;
+      }
+
+      if (listening) {
+        stopListening();
+      } else {
+        startListening();
+      }
       currentError = "";
       render();
       positionPopover();
@@ -213,11 +290,11 @@ export function createBindingPopover(): BindingPopoverController {
       });
     });
     saveBtn.addEventListener("click", () => {
-      const nextBinding = fromSelectValue(currentSelection);
-      if (!nextBinding) {
+      if (!currentSelection) {
         return;
       }
 
+      const nextBinding = currentSelection;
       void runAction(async () => {
         await options.onSave(nextBinding);
         close();
@@ -289,10 +366,11 @@ export function createBindingPopover(): BindingPopoverController {
     }
 
     const onClose = currentOptions.onClose;
+    stopListening();
     currentOptions = null;
     currentButtonCode = null;
     currentAnchorEl = null;
-    currentSelection = "";
+    currentSelection = null;
     currentError = "";
     pending = false;
     popover.hidden = true;
@@ -305,16 +383,30 @@ export function createBindingPopover(): BindingPopoverController {
     currentOptions = options;
     currentButtonCode = options.button.code;
     currentAnchorEl = options.anchorEl;
-    currentSelection = toSelectValue(options.currentBinding);
+    currentSelection = options.currentBinding ? { ...options.currentBinding } : null;
     currentError = "";
     pending = false;
+    stopListening();
     layer.hidden = false;
     render();
     positionPopover();
   }
 
+  function startListening() {
+    listening = true;
+    captureModifiers = new Set<number>();
+    modifierOnlyCandidate = null;
+  }
+
+  function stopListening() {
+    listening = false;
+    captureModifiers.clear();
+    modifierOnlyCandidate = null;
+  }
+
   document.addEventListener("pointerdown", handlePointerDown, true);
   document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("keyup", handleKeyUp);
   window.addEventListener("resize", handleWindowChange);
   window.addEventListener("scroll", handleWindowChange, true);
 
@@ -328,6 +420,7 @@ export function createBindingPopover(): BindingPopoverController {
       close();
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("resize", handleWindowChange);
       window.removeEventListener("scroll", handleWindowChange, true);
       layer.remove();

@@ -16,6 +16,8 @@ pub enum OutputAction {
     Key { code: u16, pressed: bool },
     /// Move the mouse by a relative delta.
     MouseMove { dx: i32, dy: i32 },
+    /// Emit a generic relative-axis event.
+    RelativeAxis { axis: u16, value: i32 },
     /// Press or release a mouse button.
     MouseButton { code: u16, pressed: bool },
 }

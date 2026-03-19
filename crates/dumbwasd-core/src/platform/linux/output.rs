@@ -22,8 +22,16 @@ impl LinuxOutput {
         }
 
         let mut rel_axes = AttributeSet::<RelativeAxisCode>::new();
-        rel_axes.insert(RelativeAxisCode::REL_X);
-        rel_axes.insert(RelativeAxisCode::REL_Y);
+        for axis in [
+            RelativeAxisCode::REL_X,
+            RelativeAxisCode::REL_Y,
+            RelativeAxisCode::REL_HWHEEL,
+            RelativeAxisCode::REL_WHEEL,
+            RelativeAxisCode::REL_WHEEL_HI_RES,
+            RelativeAxisCode::REL_HWHEEL_HI_RES,
+        ] {
+            rel_axes.insert(axis);
+        }
 
         let device = VirtualDevice::builder()
             .context("failed to create virtual device builder")?
@@ -68,6 +76,9 @@ impl OutputBackend for LinuxOutput {
                     ));
                 }
                 evs
+            }
+            OutputAction::RelativeAxis { axis, value } => {
+                vec![EvdevInputEvent::new(EventType::RELATIVE.0, *axis, *value)]
             }
             OutputAction::MouseButton { code, pressed } => {
                 vec![EvdevInputEvent::new(

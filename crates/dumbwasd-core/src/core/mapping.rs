@@ -4,7 +4,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::core::event::{InputEvent, OutputAction};
 use crate::core::profile::{
-    Behavior, Binding, BindingOutput, Combo, MacroStep, OutputTarget, PlaybackMode, Profile,
+    Behavior, Binding, BindingOutput, Combo, MacroStep, PlaybackMode, Profile,
     Trigger,
 };
 
@@ -110,8 +110,7 @@ impl Mapper {
                     actions
                 } else {
                     self.resolve_legacy_mapping(*code, *pressed, profile)
-                        .into_iter()
-                        .collect()
+                        .unwrap_or_default()
                 };
 
                 let mut actions = actions;
@@ -1034,19 +1033,10 @@ impl Mapper {
         code: u16,
         pressed: bool,
         profile: &Profile,
-    ) -> Option<OutputAction> {
+    ) -> Option<Vec<OutputAction>> {
         let mapping = profile.mappings.iter().find(|m| m.from == code)?;
 
-        Some(match &mapping.to {
-            OutputTarget::Key { code } => OutputAction::Key {
-                code: *code,
-                pressed,
-            },
-            OutputTarget::MouseButton { code } => OutputAction::MouseButton {
-                code: *code,
-                pressed,
-            },
-        })
+        Some(mapping.to.actions(pressed))
     }
 
     fn is_mouse_button_code(code: u16) -> bool {

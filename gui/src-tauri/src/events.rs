@@ -1,8 +1,9 @@
 use anyhow::Result;
-use dumbwasd_core::core::event::InputEvent;
+use dumbwasd_core::core::event::{InputEvent, OutputAction};
+use dumbwasd_core::core::profile::Mapping;
 use dumbwasd_core::devices::azeron;
 use dumbwasd_core::platform::linux::LinuxInput;
-use dumbwasd_core::platform::InputBackend;
+use dumbwasd_core::platform::{InputBackend, OutputBackend};
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -52,6 +53,8 @@ impl Default for MonitorState {
 pub async fn start_monitoring(
     device_paths: Vec<String>,
     use_azeron_hid: bool,
+    legacy_mappings: Vec<Mapping>,
+    suppress_mapped_inputs: bool,
     app: tauri::AppHandle,
     state: &MonitorState,
 ) -> Result<()> {
@@ -60,7 +63,15 @@ pub async fn start_monitoring(
 
     let task_handle = state.task.clone();
     let handle = tokio::spawn(async move {
-        if let Err(e) = monitor_devices(device_paths, use_azeron_hid, app).await {
+        if let Err(e) = monitor_devices(
+            device_paths,
+            use_azeron_hid,
+            legacy_mappings,
+            suppress_mapped_inputs,
+            app,
+        )
+        .await
+        {
             tracing::error!("monitoring error: {e:#}");
         }
     });
@@ -81,17 +92,28 @@ pub async fn stop_monitoring(state: &MonitorState) {
 async fn monitor_devices(
     device_paths: Vec<String>,
     use_azeron_hid: bool,
+    legacy_mappings: Vec<Mapping>,
+    suppress_mapped_inputs: bool,
     app: tauri::AppHandle,
 ) -> Result<()> {
     // Channel to merge events from all device streams
     let (tx, mut rx) = tokio::sync::mpsc::channel::<MonitoredEvent>(256);
+    let output = if suppress_mapped_inputs && !legacy_mappings.is_empty() {
+        Some(Arc::new(Mutex::new(Box::new(
+            dumbwasd_core::platform::create_output_backend()?,
+        ) as Box<dyn OutputBackend>)))
+    } else {
+        None
+    };
 
     // Spawn a reader task for each device path
     for path in &device_paths {
         let tx = tx.clone();
         let path = path.clone();
+        let output = output.clone();
+        let legacy_mappings = legacy_mappings.clone();
         tokio::spawn(async move {
-            if let Err(e) = read_device_events(&path, tx).await {
+            if let Err(e) = read_device_events(&path, tx, legacy_mappings, output).await {
                 tracing::warn!("device {path} stopped: {e:#}");
             }
         });
@@ -141,8 +163,14 @@ async fn monitor_devices(
 async fn read_device_events(
     device_path: &str,
     tx: tokio::sync::mpsc::Sender<MonitoredEvent>,
+    legacy_mappings: Vec<Mapping>,
+    output: Option<SharedOutput>,
 ) -> Result<()> {
-    let mut input = LinuxInput::new_passive();
+    let mut input = if output.is_some() {
+        LinuxInput::new()
+    } else {
+        LinuxInput::new_passive()
+    };
     input.open_device(device_path).await?;
     let device_name = input.device_name().unwrap_or("Unknown").to_string();
 
@@ -173,6 +201,13 @@ async fn read_device_events(
                 {
                     break;
                 }
+
+                if let Some(output) = &output {
+                    let actions = resolve_legacy_mapping(code, pressed, &legacy_mappings)
+                        .unwrap_or_else(|| vec![passthrough_button_action(code, pressed)]);
+
+                    emit_output_actions(output, &actions).await?;
+                }
             }
             InputEvent::Axis { axis, value } => {
                 let axis_info = input.axis_info(axis);
@@ -199,11 +234,48 @@ async fn read_device_events(
                 {
                     break;
                 }
+
+                if let Some(output) = &output {
+                    emit_output_actions(output, &[OutputAction::RelativeAxis { axis, value }]).await?;
+                }
             }
             InputEvent::Sync => {}
         }
     }
 
+    Ok(())
+}
+
+type SharedOutput = Arc<Mutex<Box<dyn OutputBackend>>>;
+
+fn resolve_legacy_mapping(code: u16, pressed: bool, mappings: &[Mapping]) -> Option<Vec<OutputAction>> {
+    let mapping = mappings.iter().find(|mapping| mapping.from == code)?;
+
+    Some(mapping.to.actions(pressed))
+}
+
+fn passthrough_button_action(code: u16, pressed: bool) -> OutputAction {
+    if is_mouse_button_code(code) {
+        OutputAction::MouseButton { code, pressed }
+    } else {
+        OutputAction::Key { code, pressed }
+    }
+}
+
+fn is_mouse_button_code(code: u16) -> bool {
+    (0x110..=0x117).contains(&code)
+}
+
+async fn emit_output_actions(output: &SharedOutput, actions: &[OutputAction]) -> Result<()> {
+    if actions.is_empty() {
+        return Ok(());
+    }
+
+    let mut output = output.lock().await;
+    for action in actions {
+        output.emit(action)?;
+    }
+    output.emit_sync()?;
     Ok(())
 }
 

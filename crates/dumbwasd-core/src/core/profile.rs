@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::config;
+use super::{config, event::OutputAction};
 
 /// Top-level profile file structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +220,55 @@ pub enum OutputTarget {
     Key { code: u16 },
     /// A mouse button.
     MouseButton { code: u16 },
+    /// A modifier chord such as Ctrl+L.
+    Shortcut { modifiers: Vec<u16>, key: u16 },
+}
+
+impl OutputTarget {
+    pub fn actions(&self, pressed: bool) -> Vec<OutputAction> {
+        match self {
+            Self::Key { code } => vec![OutputAction::Key {
+                code: *code,
+                pressed,
+            }],
+            Self::MouseButton { code } => vec![OutputAction::MouseButton {
+                code: *code,
+                pressed,
+            }],
+            Self::Shortcut { modifiers, key } => {
+                if !pressed {
+                    return Vec::new();
+                }
+
+                let mut actions = Vec::with_capacity(modifiers.len() * 2 + 2);
+
+                for modifier in modifiers {
+                    actions.push(OutputAction::Key {
+                        code: *modifier,
+                        pressed: true,
+                    });
+                }
+
+                actions.push(OutputAction::Key {
+                    code: *key,
+                    pressed: true,
+                });
+                actions.push(OutputAction::Key {
+                    code: *key,
+                    pressed: false,
+                });
+
+                for modifier in modifiers.iter().rev() {
+                    actions.push(OutputAction::Key {
+                        code: *modifier,
+                        pressed: false,
+                    });
+                }
+
+                actions
+            }
+        }
+    }
 }
 
 impl Profile {
@@ -263,7 +312,8 @@ fn default_multi_press_timeout_ms() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Behavior, BindingOutput, PlaybackMode, Profile, Trigger};
+    use super::{Behavior, BindingOutput, OutputTarget, PlaybackMode, Profile, Trigger};
+    use crate::core::event::OutputAction;
 
     #[test]
     fn parses_legacy_profile_shape() {
@@ -389,6 +439,37 @@ name = "FPS"
                 .expect("active binding preset should resolve")
                 .id,
             "fps"
+        );
+    }
+
+    #[test]
+    fn shortcut_output_target_emits_tap_sequence_on_press() {
+        let actions = OutputTarget::Shortcut {
+            modifiers: vec![29],
+            key: 38,
+        }
+        .actions(true);
+
+        assert_eq!(
+            actions,
+            vec![
+                OutputAction::Key {
+                    code: 29,
+                    pressed: true,
+                },
+                OutputAction::Key {
+                    code: 38,
+                    pressed: true,
+                },
+                OutputAction::Key {
+                    code: 38,
+                    pressed: false,
+                },
+                OutputAction::Key {
+                    code: 29,
+                    pressed: false,
+                },
+            ]
         );
     }
 }

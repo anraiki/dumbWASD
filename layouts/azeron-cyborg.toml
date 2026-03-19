@@ -9,7 +9,7 @@ layout_type = "custom"
 [[buttons]]
 id = 103
 label = "Up"
-x = 570
+x = 580
 y = -30
 
 [[buttons]]
@@ -39,19 +39,19 @@ y = 70
 [[buttons]]
 id = 105
 label = "Left"
-x = 490
+x = 500
 y = 70
 
 [[buttons]]
 id = 20
 label = "T"
-x = 570
+x = 580
 y = 70
 
 [[buttons]]
 id = 106
 label = "Right"
-x = 650
+x = 660
 y = 70
 
 [[buttons]]
@@ -81,7 +81,7 @@ y = 170
 [[buttons]]
 id = 108
 label = "Down"
-x = 570
+x = 580
 y = 170
 
 [[buttons]]
@@ -122,7 +122,7 @@ y = 270
 
 [[buttons]]
 id = 0
-label = "Left Stick"
+label = ""
 x = 500
 y = 270
 is_joystick = true

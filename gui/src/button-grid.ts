@@ -1,11 +1,12 @@
 import {
   applyKeyboardJoystickState,
-  buildKeyboardJoystickMarkup,
   createKeyboardJoystickState,
   resetKeyboardJoystickState,
   setKeyboardJoystickAnalog,
   setKeyboardJoystickDirection,
 } from "./keyboard-joystick";
+import { getButtonDimensions } from "./button-layout";
+import { mountButtonFace } from "./button-face";
 
 interface DeviceLayout {
   device: {
@@ -48,9 +49,7 @@ interface CreateButtonGridOptions {
 }
 
 function getButtonSize(btn: DeviceLayout["buttons"][number]) {
-  const width = 70 * (btn.colspan || 1);
-  const height = 90 * (btn.rowspan || 1);
-  return { width, height };
+  return getButtonDimensions(btn);
 }
 
 export function createButtonGrid(
@@ -150,16 +149,10 @@ export function createButtonGrid(
       // Offset positions by minX/minY and add padding to normalize to container coordinates
       el.style.left = `${(btn.x ?? 0) - minX + padding}px`;
       el.style.top = `${(btn.y ?? 0) - minY + padding}px`;
-
+      mountButtonFace(el, btn);
       if (btn.is_joystick) {
-        el.innerHTML = buildKeyboardJoystickMarkup(btn.label);
         joystickElements.push(el);
         applyKeyboardJoystickState(el, joystickState);
-      } else {
-        el.innerHTML = `
-          <div class="button-label">${btn.label}</div>
-          <div class="button-id">#${btn.id}</div>
-        `;
       }
 
       bindButtonInteractions(btn, el);
@@ -230,16 +223,10 @@ export function createButtonGrid(
 
       el.style.gridRow = `${rowStart} / span ${rowSpan}`;
       el.style.gridColumn = `${colStart} / span ${colSpan}`;
-
+      mountButtonFace(el, btn);
       if (btn.is_joystick) {
-        el.innerHTML = buildKeyboardJoystickMarkup(btn.label);
         joystickElements.push(el);
         applyKeyboardJoystickState(el, joystickState);
-      } else {
-        el.innerHTML = `
-          <div class="button-label">${btn.label}</div>
-          <div class="button-id">#${btn.id}</div>
-        `;
       }
 
       bindButtonInteractions(btn, el);

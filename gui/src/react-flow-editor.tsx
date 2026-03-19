@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactFlow, {
   Node,
@@ -22,6 +22,8 @@ import {
   setKeyboardJoystickAnalog,
   setKeyboardJoystickDirection,
 } from './keyboard-joystick';
+import { getButtonDimensions } from './button-layout';
+import { mountButtonFace } from './button-face';
 
 interface DeviceLayout {
   device: {
@@ -56,72 +58,26 @@ interface ButtonNodeData {
 
 // Custom button node component
 const ButtonNode: React.FC<{ data: ButtonNodeData }> = ({ data }) => {
-  // Match View Mode dimensions exactly
-  const baseWidth = 70;
-  const baseHeight = 90;
-  const width = baseWidth * (data.colspan || 1);
-  const height = baseHeight * (data.rowspan || 1);
+  const { width, height } = getButtonDimensions(data);
+  const shellRef = useRef<HTMLDivElement | null>(null);
 
-  if (data.is_joystick) {
-    return (
-      <div
-        className="react-flow-button joystick"
-        style={{
-          width: `${width}px`,
-          height: `${height}px`,
-        }}
-      >
-        <div className="joystick-display" data-joystick-display>
-          Keyboard Joystick
-        </div>
-        <div className="joystick-circle">
-          <div className="joystick-puck" data-joystick-puck></div>
-          <span className="joystick-dir joystick-w" data-joystick-dir="up">W</span>
-          <span className="joystick-dir joystick-a" data-joystick-dir="left">A</span>
-          <span className="joystick-dir joystick-s" data-joystick-dir="down">S</span>
-          <span className="joystick-dir joystick-d" data-joystick-dir="right">D</span>
-        </div>
-        <div className="joystick-label-bottom">
-          {data.label}
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            bottom: '4px',
-            left: '4px',
-            fontSize: '10px',
-            color: '#606080',
-          }}
-        >
-          #{data.id}
-        </div>
-      </div>
-    );
-  }
+  useLayoutEffect(() => {
+    if (!shellRef.current) {
+      return;
+    }
+
+    mountButtonFace(shellRef.current, data);
+  }, [data]);
 
   return (
     <div
-      className="react-flow-button"
+      ref={shellRef}
+      className={data.is_joystick ? "react-flow-button joystick" : "react-flow-button"}
       style={{
         width: `${width}px`,
         height: `${height}px`,
       }}
-    >
-      <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px', color: VIEW_LABEL_COLOR }}>
-        {data.label}
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '4px',
-          left: '4px',
-          fontSize: '10px',
-          color: '#606080',
-        }}
-      >
-        #{data.id}
-      </div>
-    </div>
+    />
   );
 };
 
@@ -129,7 +85,6 @@ const nodeTypes: NodeTypes = {
   buttonNode: ButtonNode,
 };
 
-const VIEW_LABEL_COLOR = 'rgb(128, 128, 144)';
 const AUTO_FIT_PADDING_PX = 20;
 const AUTO_FIT_MAX_ZOOM = 1;
 
@@ -244,8 +199,7 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
     let maxY = -Infinity;
 
     targetNodes.forEach((node) => {
-      const nodeWidth = 70 * (node.data.colspan || 1);
-      const nodeHeight = 90 * (node.data.rowspan || 1);
+      const { width: nodeWidth, height: nodeHeight } = getButtonDimensions(node.data);
 
       minX = Math.min(minX, node.position.x);
       minY = Math.min(minY, node.position.y);

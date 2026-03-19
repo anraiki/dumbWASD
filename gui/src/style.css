@@ -267,6 +267,8 @@ html, body {
   gap: 8px;
   padding: 16px;
   border-bottom: 1px solid #2a2a4a;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .drawer-title {
@@ -343,6 +345,8 @@ html, body {
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .profile-item:hover {
@@ -367,6 +371,8 @@ html, body {
   padding: 12px 20px;
   background: var(--surface);
   border-bottom: 1px solid #2a2a4a;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .selectors {
@@ -415,6 +421,8 @@ html, body {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn:disabled {
@@ -448,6 +456,8 @@ html, body {
   cursor: pointer;
   padding: 0;
   transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn-icon:hover {
@@ -465,6 +475,8 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn-action:disabled {
@@ -507,6 +519,75 @@ html, body {
   overflow: hidden;
 }
 
+.device-artwork-preview {
+  width: min(760px, calc(100% - 48px));
+  height: min(560px, calc(100% - 48px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.device-artwork-frame {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(20px, 4vw, 44px);
+  border: 1px solid rgba(112, 128, 184, 0.24);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top, rgba(77, 166, 255, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(28, 35, 62, 0.9), rgba(17, 22, 40, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 60px rgba(0, 0, 0, 0.28);
+}
+
+.device-artwork-svg {
+  width: min(100%, 520px);
+  max-height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  filter:
+    drop-shadow(0 12px 18px rgba(0, 0, 0, 0.3))
+    drop-shadow(0 0 30px rgba(77, 166, 255, 0.16));
+}
+
+.device-artwork-hit-target {
+  fill: transparent !important;
+  fill-opacity: 1 !important;
+  pointer-events: all;
+  transition: none;
+}
+
+.device-artwork-bindable {
+  cursor: pointer;
+  pointer-events: auto;
+  outline: none;
+}
+
+.device-artwork-bindable:hover,
+.device-artwork-bindable:focus-visible,
+.device-artwork-hit-target.selected {
+  fill: rgba(241, 212, 128, 0.2) !important;
+  fill-opacity: 1 !important;
+  stroke: rgba(241, 212, 128, 0.9) !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 12px rgba(241, 212, 128, 0.35));
+}
+
+.device-artwork-hit-target.active {
+  fill: rgba(77, 166, 255, 0.7) !important;
+  fill-opacity: 1 !important;
+  stroke: #8ec5ff !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 10px rgba(77, 166, 255, 0.45));
+}
+
 .button-grid {
   display: grid;
   gap: 8px;
@@ -514,7 +595,8 @@ html, body {
   width: 100%;
 }
 
-.button {
+.button,
+.react-flow-button {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -569,7 +651,8 @@ html, body {
   -webkit-user-select: none;
 }
 
-.button.active {
+.button.active,
+.react-flow-button.active {
   background: var(--button-active);
   border-color: var(--accent-glow);
   color: #fff;
@@ -730,26 +813,44 @@ html, body {
   gap: 8px;
 }
 
-.binding-popover-select {
+.binding-popover-capture {
   width: 100%;
-  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 13px;
   border: 1px solid rgba(241, 212, 128, 0.22);
   border-radius: 10px;
-  background: rgba(18, 19, 23, 0.92);
-  color: #fff8da;
+  background: rgba(245, 240, 227, 0.95);
+  color: #111111;
   font-size: 14px;
   outline: none;
+  text-align: left;
+  cursor: pointer;
 }
 
-.binding-popover-select:focus {
+.binding-popover-capture:focus,
+.binding-popover-capture[data-listening="true"] {
   border-color: rgba(241, 212, 128, 0.6);
   box-shadow: 0 0 0 3px rgba(241, 212, 128, 0.12);
 }
 
-.binding-popover-select option,
-.binding-popover-select optgroup {
-  background: #1b1d22;
-  color: #fff8da;
+.binding-popover-capture:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.binding-popover-capture-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111111;
+}
+
+.binding-popover-capture-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(17, 17, 17, 0.72);
 }
 
 .binding-popover-help {
@@ -1650,37 +1751,6 @@ html, body {
 
 /* ── React Flow Editor Buttons ── */
 
-.react-flow-button {
-  background: #252545;
-  border: 2px solid #3a3a5a;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  color: rgb(128, 128, 144);
-  min-width: 70px;
-  min-height: 90px;
-  position: relative;
-  transition: all 0.12s ease-out;
-}
-
-.react-flow-button.joystick {
-  justify-content: space-between;
-}
-
-.react-flow-button.active {
-  background: var(--button-active);
-  border-color: var(--accent-glow);
-  color: #fff;
-  box-shadow:
-    0 0 12px rgba(15, 125, 255, 0.5),
-    0 0 24px rgba(15, 125, 255, 0.2);
-  transform: scale(1.04);
-  transition: none; /* Instant on press */
-}
-
 /* ── Device Bar ── */
 
 .device-bar {
@@ -1690,6 +1760,8 @@ html, body {
   padding: 8px 20px;
   background: var(--surface);
   border-top: 1px solid #2a2a4a;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .device-chips {
@@ -1711,6 +1783,8 @@ html, body {
   color: var(--text-dim);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .device-chip-icon {
@@ -1740,6 +1814,9 @@ html, body {
   z-index: 100;
   flex-direction: column;
   gap: 2px;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .device-chip-tooltip::after {
@@ -1788,6 +1865,7 @@ html, body {
   background: #4ade80;
   border: 1.5px solid var(--button-bg);
   transition: background 0.2s;
+  pointer-events: none;
 }
 
 /* ── Inactive (offline) ── */
@@ -1954,12 +2032,17 @@ html, body {
   border-top: 1px solid #2a2a4a;
   font-size: 12px;
   color: var(--text-dim);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .connection-indicator {
   font-size: 16px;
   line-height: 1;
   transition: color 0.3s ease;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .connection-indicator.disconnected {
