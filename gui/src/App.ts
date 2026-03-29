@@ -422,22 +422,8 @@ export async function createApp(container: HTMLElement) {
     }
   }
 
-  function addAzeronHidReportLogEntry(payload: AzeronHidReportEvent) {
-    if (payload.parsed_source) {
-      return;
-    }
-
-    const entry = document.createElement("div");
-    entry.className = "event-entry event-axis";
-    entry.textContent =
-      `Azeron HID · RAW report len ${payload.length}` +
-      (payload.ascii ? ` ascii ${payload.ascii}` : "") +
-      ` hex ${payload.hex}`;
-    eventLog.appendChild(entry);
-    eventLog.scrollTop = eventLog.scrollHeight;
-    while (eventLog.children.length > 100) {
-      eventLog.removeChild(eventLog.firstChild!);
-    }
+  function addAzeronHidReportLogEntry(_payload: AzeronHidReportEvent) {
+    return;
   }
 
   function addMonitoringLogEntry(message: string) {
