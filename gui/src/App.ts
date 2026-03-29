@@ -98,6 +98,13 @@ interface AzeronJoystickStateEvent {
   source: string;
 }
 
+interface AzeronHidReportEvent {
+  length: number;
+  hex: string;
+  ascii?: string | null;
+  parsed_source?: string | null;
+}
+
 interface MonitoringRequest {
   devicePaths: string[];
   label: string;
@@ -349,14 +356,13 @@ export async function createApp(container: HTMLElement) {
   hamburgerBtn.addEventListener("click", toggleDrawer);
 
   const REL_AXIS_NAMES: Record<number, string> = {
-    0: "REL_X",
-    1: "REL_Y",
+    0: "ABS_X",
+    1: "ABS_Y",
     6: "REL_HWHEEL",
     8: "REL_WHEEL",
     11: "REL_WHEEL_HI_RES",
     12: "REL_HWHEEL_HI_RES",
   };
-  const IGNORED_LOG_AXES = new Set([0, 1]);
 
   clearLogBtn.addEventListener("click", () => {
     eventLog.innerHTML = "";
@@ -384,16 +390,60 @@ export async function createApp(container: HTMLElement) {
     }
   }
 
-  function addAxisLogEntry(axis: number, value: number, devicePath?: string, deviceName?: string) {
+  function addAxisLogEntry(
+    axis: number,
+    value: number,
+    devicePath?: string,
+    deviceName?: string,
+    minimum?: number,
+    maximum?: number,
+    flat?: number,
+  ) {
     const name = REL_AXIS_NAMES[axis] || `REL_${axis}`;
     const sourceEntry = devicePath ? findDeviceEntryByPath(devicePath) : null;
     const sourceLabel = deviceName || sourceEntry?.name || devicePath || "Unknown device";
     const entry = document.createElement("div");
     entry.className = "event-entry event-axis";
-    entry.textContent = `${sourceLabel} · ${name} (${axis}) value ${value}`;
+    const hasRange = typeof minimum === "number" && typeof maximum === "number" && maximum > minimum;
+    const normalized = hasRange
+      ? Math.round((((value - minimum) / (maximum - minimum)) * 2 - 1) * 100)
+      : null;
+    const flatText = typeof flat === "number" ? ` flat ${flat}` : "";
+    const rangeText = hasRange ? ` range ${minimum}..${maximum}` : "";
+    const normalizedText = normalized === null ? "" : ` norm ${normalized >= 0 ? "+" : ""}${normalized}%`;
+    entry.textContent = `${sourceLabel} · ${name} (${axis}) value ${value}${rangeText}${flatText}${normalizedText}`;
     if (devicePath) {
       entry.title = devicePath;
     }
+    eventLog.appendChild(entry);
+    eventLog.scrollTop = eventLog.scrollHeight;
+    while (eventLog.children.length > 100) {
+      eventLog.removeChild(eventLog.firstChild!);
+    }
+  }
+
+  function addAzeronHidReportLogEntry(payload: AzeronHidReportEvent) {
+    if (payload.parsed_source) {
+      return;
+    }
+
+    const entry = document.createElement("div");
+    entry.className = "event-entry event-axis";
+    entry.textContent =
+      `Azeron HID · RAW report len ${payload.length}` +
+      (payload.ascii ? ` ascii ${payload.ascii}` : "") +
+      ` hex ${payload.hex}`;
+    eventLog.appendChild(entry);
+    eventLog.scrollTop = eventLog.scrollHeight;
+    while (eventLog.children.length > 100) {
+      eventLog.removeChild(eventLog.firstChild!);
+    }
+  }
+
+  function addMonitoringLogEntry(message: string) {
+    const entry = document.createElement("div");
+    entry.className = "event-entry event-axis";
+    entry.textContent = message;
     eventLog.appendChild(entry);
     eventLog.scrollTop = eventLog.scrollHeight;
     while (eventLog.children.length > 100) {
@@ -419,6 +469,7 @@ export async function createApp(container: HTMLElement) {
   let unlistenButtonState: (() => void) | null = null;
   let unlistenAxisState: (() => void) | null = null;
   let unlistenAzeronJoystickState: (() => void) | null = null;
+  let unlistenAzeronHidReport: (() => void) | null = null;
   let isEditMode = false;
   let isMacroMode = false;
   let listenAllDevices = false;
@@ -431,8 +482,6 @@ export async function createApp(container: HTMLElement) {
   const joystickAxisNormalized = new Map<string, Map<number, number>>();
   let lastJoystickMotionAt = 0;
   let currentJoystickVector: { x: number; y: number } | null = null;
-  let azeronHidJoystickActive = false;
-
   // Cache system devices at startup
   let allDevices: DeviceEntry[] = [];
   try {
@@ -640,7 +689,20 @@ export async function createApp(container: HTMLElement) {
     return undefined;
   }
 
-  function isLikelyJoystickAxisSource(deviceName?: string): boolean {
+  function isLikelyJoystickAxisSource(devicePath: string, deviceName?: string): boolean {
+    const sourceEntry = findDeviceEntryByPath(devicePath);
+    if (sourceEntry) {
+      if (sourceEntry.is_azeron || sourceEntry.has_gamepad) {
+        return true;
+      }
+      if (sourceEntry.has_keyboard || sourceEntry.has_mouse) {
+        const selectedEntry = selectedDeviceInBar ? findDeviceEntry(selectedDeviceInBar) : null;
+        if (selectedEntry?.paths.includes(devicePath) && selectedEntry.is_azeron) {
+          return true;
+        }
+      }
+    }
+
     const lower = (deviceName || "").toLowerCase();
     if (lower.includes("keyboard") || lower.includes("mouse")) {
       return false;
@@ -648,11 +710,12 @@ export async function createApp(container: HTMLElement) {
     return lower.includes("gamepad") || lower.includes("joystick") || lower.includes("azeron");
   }
 
+  function shouldUseAzeronHidJoystick(): boolean {
+    return selectedDeviceInBar?.device_kind === "azeron";
+  }
+
   function recordJoystickMotion(axis: number, value: number, devicePath: string, deviceName?: string) {
-    if (selectedDeviceInBar?.device_kind !== "azeron") {
-      return;
-    }
-    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(deviceName)) {
+    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(devicePath, deviceName)) {
       return;
     }
 
@@ -680,8 +743,11 @@ export async function createApp(container: HTMLElement) {
     const center = min + (max - min) / 2;
     const span = Math.max((max - min) / 2, 1);
     const normalized = Math.max(-1, Math.min(1, (value - center) / span));
-    const deadzone = flat ? Math.min(Math.abs(flat / span), 0.45) : 0;
+    if (!flat) {
+      return normalized;
+    }
 
+    const deadzone = Math.min(Math.abs(flat / span), 0.45);
     if (Math.abs(normalized) <= deadzone) {
       return 0;
     }
@@ -711,13 +777,10 @@ export async function createApp(container: HTMLElement) {
     maximum?: number,
     flat?: number,
   ) {
-    if (selectedDeviceInBar?.device_kind !== "azeron") {
+    if (shouldUseAzeronHidJoystick()) {
       return;
     }
-    if (azeronHidJoystickActive) {
-      return;
-    }
-    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(deviceName)) {
+    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(devicePath, deviceName)) {
       return;
     }
 
@@ -739,11 +802,10 @@ export async function createApp(container: HTMLElement) {
   }
 
   function updateJoystickVectorFromAzeronHid(payload: AzeronJoystickStateEvent) {
-    if (selectedDeviceInBar?.device_kind !== "azeron") {
+    if (!shouldUseAzeronHidJoystick()) {
       return;
     }
 
-    azeronHidJoystickActive = true;
     lastJoystickMotionAt = Date.now();
     currentJoystickVector = {
       x: normalizeAzeronJoystickValue(payload.x),
@@ -1595,7 +1657,6 @@ export async function createApp(container: HTMLElement) {
       connectionIndicator.className = "connection-indicator connecting";
       connectionIndicator.title = "Connecting...";
       statusEl.textContent = "Connecting...";
-      azeronHidJoystickActive = false;
 
       await invoke("start_monitoring", {
         devicePaths: request.devicePaths,
@@ -1613,6 +1674,9 @@ export async function createApp(container: HTMLElement) {
       connectionIndicator.title = "Connected";
       statusEl.textContent = request.label;
       syncAuxPanels();
+      addMonitoringLogEntry(
+        `Monitoring · HID ${request.useAzeronHid ? "enabled" : "disabled"} · paths ${request.devicePaths.join(", ")}`
+      );
 
       unlistenButtonState = await listen<ButtonStateEvent>("button-state", (event) => {
         const { code, pressed, device_path: devicePath, device_name: deviceName } = event.payload;
@@ -1622,7 +1686,9 @@ export async function createApp(container: HTMLElement) {
         } else {
           pressedButtons.delete(code);
         }
-        addEventLogEntry(code, pressed, devicePath, deviceName);
+        if (!suppressPhysicalHighlight) {
+          addEventLogEntry(code, pressed, devicePath, deviceName);
+        }
         if (!MOUSE_BUTTON_CODES.has(code)) {
           macroStudio.handleInputEvent(code, pressed);
         }
@@ -1650,6 +1716,10 @@ export async function createApp(container: HTMLElement) {
         updateJoystickVectorFromAzeronHid(event.payload);
       });
 
+      unlistenAzeronHidReport = await listen<AzeronHidReportEvent>("azeron-hid-report", (event) => {
+        addAzeronHidReportLogEntry(event.payload);
+      });
+
       unlistenAxisState = await listen<AxisStateEvent>("axis-state", (event) => {
         const {
           axis,
@@ -1662,10 +1732,7 @@ export async function createApp(container: HTMLElement) {
         } = event.payload;
         recordJoystickMotion(axis, value, devicePath, deviceName);
         updateJoystickVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
-        if (IGNORED_LOG_AXES.has(axis)) {
-          return;
-        }
-        addAxisLogEntry(axis, value, devicePath, deviceName);
+        addAxisLogEntry(axis, value, devicePath, deviceName, minimum, maximum, flat);
       });
     } catch (e) {
       connectionIndicator.className = "connection-indicator disconnected";
@@ -1700,7 +1767,6 @@ export async function createApp(container: HTMLElement) {
     joystickAxisNormalized.clear();
     lastJoystickMotionAt = 0;
     currentJoystickVector = null;
-    azeronHidJoystickActive = false;
     macroStudio.setMonitoringActive(false);
     syncAuxPanels();
 
@@ -1710,6 +1776,8 @@ export async function createApp(container: HTMLElement) {
     unlistenAxisState = null;
     unlistenAzeronJoystickState?.();
     unlistenAzeronJoystickState = null;
+    unlistenAzeronHidReport?.();
+    unlistenAzeronHidReport = null;
   }
 
   // ── Startup ──

@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use hidapi::{HidApi, HidDevice};
+use serde::Serialize;
 
 // ── Device identification ──────────────────────────────────────────
 
@@ -7,6 +8,8 @@ pub const VENDOR_ID: u16 = 0x16D0;
 pub const PRODUCT_ID: u16 = 0x10BC;
 /// The HID interface used for configuration (not keyboard/mouse/joystick).
 pub const CONFIG_INTERFACE: i32 = 4;
+pub const CONFIG_USAGE_PAGE: u16 = 0xFF01;
+pub const CONFIG_USAGE: u16 = 0x0101;
 
 pub struct KnownDevice {
     pub name: &'static str,
@@ -22,6 +25,27 @@ pub static KNOWN_DEVICES: &[KnownDevice] = &[KnownDevice {
 
 /// Number of programmable buttons on the Azeron Cyborg.
 pub const BUTTON_COUNT: usize = 38;
+pub const JOYSTICK_CENTER: i32 = 512;
+pub const JOYSTICK_SPAN: i32 = 512;
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct JoystickState {
+    pub x: i32,
+    pub y: i32,
+    pub raw_x: i32,
+    pub raw_y: i32,
+    pub source: String,
+}
+
+impl JoystickState {
+    pub fn normalized_x(&self) -> f32 {
+        normalize_joystick_value(self.x)
+    }
+
+    pub fn normalized_y(&self) -> f32 {
+        normalize_joystick_value(self.y)
+    }
+}
 
 // ── Pin mappings (button ID → hardware pins) ──────────────────────
 
@@ -280,6 +304,35 @@ fn frame_message(message: &str) -> Vec<u8> {
     buf
 }
 
+fn frame_binary_message(command_type: u8, payload: &[u8], echo: u8) -> Vec<Vec<u8>> {
+    const REPORT_DATA_LEN: usize = 64;
+    const PAGE_PAYLOAD_LEN: usize = 57;
+
+    let total_len = payload.len();
+    let page_count = total_len.max(1).div_ceil(PAGE_PAYLOAD_LEN);
+    let mut reports = Vec::with_capacity(page_count);
+
+    for page_index in 0..page_count {
+        let start = page_index * PAGE_PAYLOAD_LEN;
+        let end = usize::min(start + PAGE_PAYLOAD_LEN, total_len);
+        let page_payload = &payload[start..end];
+
+        let mut report = vec![0u8; REPORT_DATA_LEN + 1];
+        report[0] = 0;
+        report[1] = ((total_len >> 8) & 0xFF) as u8;
+        report[2] = (total_len & 0xFF) as u8;
+        report[3] = command_type;
+        report[4] = echo;
+        report[5] = page_count as u8;
+        report[6] = (page_index + 1) as u8;
+        report[7] = page_payload.len() as u8;
+        report[8..8 + page_payload.len()].copy_from_slice(page_payload);
+        reports.push(report);
+    }
+
+    reports
+}
+
 /// Read a text response from the Azeron, skipping binary status packets.
 ///
 /// Packet structure (from azeron-cli reverse engineering):
@@ -338,6 +391,29 @@ fn send_command(device: &HidDevice, command: &str) -> Result<String> {
     read_text_response(device)
 }
 
+/// Send a text command without waiting for a response.
+fn send_command_no_response(device: &HidDevice, command: &str) -> Result<()> {
+    let msg = frame_message(command);
+    device
+        .write(&msg)
+        .with_context(|| format!("failed to write HID command: {command}"))?;
+    Ok(())
+}
+
+fn send_binary_command_no_response(
+    device: &HidDevice,
+    command_type: u8,
+    payload: &[u8],
+    echo: u8,
+) -> Result<()> {
+    for report in frame_binary_message(command_type, payload, echo) {
+        device
+            .write(&report)
+            .with_context(|| format!("failed to write binary HID command type={command_type}"))?;
+    }
+    Ok(())
+}
+
 /// Send a command and read ALL text response packets (for multi-packet responses like GET_PROFILES).
 fn send_command_multi(device: &HidDevice, command: &str) -> Result<Vec<String>> {
     let msg = frame_message(command);
@@ -386,7 +462,15 @@ pub fn open_config_device() -> Result<HidDevice> {
         .find(|d| {
             d.vendor_id() == VENDOR_ID
                 && d.product_id() == PRODUCT_ID
-                && d.interface_number() == CONFIG_INTERFACE
+                && d.usage_page() == CONFIG_USAGE_PAGE
+                && d.usage() == CONFIG_USAGE
+        })
+        .or_else(|| {
+            api.device_list().find(|d| {
+                d.vendor_id() == VENDOR_ID
+                    && d.product_id() == PRODUCT_ID
+                    && d.interface_number() == CONFIG_INTERFACE
+            })
         })
         .context("Azeron device not found (is it plugged in?)")?;
 
@@ -397,9 +481,121 @@ pub fn open_config_device() -> Result<HidDevice> {
     Ok(device)
 }
 
+/// Read one joystick status update from the Azeron config HID interface.
+///
+/// Returns `Ok(None)` on timeout or when the packet is not a joystick report.
+pub fn read_joystick_state(device: &HidDevice, timeout_ms: i32) -> Result<Option<JoystickState>> {
+    let mut buf = [0u8; 64];
+    let n = device
+        .read_timeout(&mut buf, timeout_ms)
+        .context("failed to read Azeron HID report")?;
+    if n == 0 {
+        return Ok(None);
+    }
+
+    Ok(parse_joystick_state(&buf[..n]))
+}
+
+/// Parse a joystick status packet from the Azeron config HID interface.
+pub fn parse_joystick_state(report: &[u8]) -> Option<JoystickState> {
+    if report.first().is_some_and(|byte| byte.is_ascii_graphic()) {
+        return parse_text_joystick_state(report);
+    }
+
+    parse_binary_joystick_state(report)
+}
+
 /// Get the firmware version string.
 pub fn get_firmware_version(device: &HidDevice) -> Result<String> {
     send_command(device, "GET_FW_VERSION")
+}
+
+/// Prime the configurator HID stream so the device starts emitting live joystick packets.
+///
+/// This mirrors the startup sequence used by the official Azeron Linux app:
+/// text firmware/type probes plus binary firmware/details/right-analog requests.
+pub fn prime_joystick_stream(device: &HidDevice) -> Result<()> {
+    const FIRMWARE_VERSION: u8 = 5;
+    const KEYPAD_DETAILS: u8 = 2;
+    const RIGHT_ANALOG: u8 = 33;
+
+    send_command_no_response(device, "GET_FW_VERSION")?;
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    send_binary_command_no_response(device, FIRMWARE_VERSION, &[], 1)?;
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    send_command_no_response(device, "GET_FW_TYPE")?;
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    send_binary_command_no_response(device, KEYPAD_DETAILS, &[], 2)?;
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    send_binary_command_no_response(device, RIGHT_ANALOG, &[], 3)?;
+
+    Ok(())
+}
+
+/// Keepalive used by the official app to keep the configurator HID stream active.
+pub fn ping_device(device: &HidDevice) -> Result<()> {
+    send_command_no_response(device, "Hi")
+}
+
+/// Binary keepalive used once the device is in the modern binary protocol path.
+pub fn ping_device_binary(device: &HidDevice) -> Result<()> {
+    const PING_DEVICE: u8 = 18;
+    send_binary_command_no_response(device, PING_DEVICE, &[], 4)
+}
+
+fn normalize_joystick_value(value: i32) -> f32 {
+    ((value - JOYSTICK_CENTER) as f32 / JOYSTICK_SPAN as f32).clamp(-1.0, 1.0)
+}
+
+fn parse_binary_joystick_state(report: &[u8]) -> Option<JoystickState> {
+    const KEYPAD_STATUS: u8 = 1;
+    const HEADER_LEN: usize = 7;
+
+    if report.len() < HEADER_LEN || report[2] != KEYPAD_STATUS {
+        return None;
+    }
+
+    let payload_len = report[6] as usize;
+    if report.len() < HEADER_LEN + payload_len || payload_len < 14 {
+        return None;
+    }
+
+    let payload = &report[HEADER_LEN..HEADER_LEN + payload_len];
+
+    Some(JoystickState {
+        raw_x: i16::from_le_bytes([payload[6], payload[7]]) as i32,
+        raw_y: i16::from_le_bytes([payload[8], payload[9]]) as i32,
+        x: i16::from_le_bytes([payload[10], payload[11]]) as i32,
+        y: i16::from_le_bytes([payload[12], payload[13]]) as i32,
+        source: "binary-keypad-status".to_string(),
+    })
+}
+
+fn parse_text_joystick_state(report: &[u8]) -> Option<JoystickState> {
+    let text_end = report
+        .iter()
+        .position(|&byte| byte == b'\r' || byte == b'\n' || byte == 0)
+        .unwrap_or(report.len());
+    let text = std::str::from_utf8(&report[..text_end]).ok()?.trim();
+    let payload = text
+        .strip_prefix("JOY_")
+        .or_else(|| text.strip_prefix("PJOY_"))?;
+    let mut parts = payload.split('_');
+    let _code = parts.next()?;
+    let x = parts.next()?.parse::<i32>().ok()?;
+    let y = parts.next()?.parse::<i32>().ok()?;
+
+    Some(JoystickState {
+        x,
+        y,
+        raw_x: x,
+        raw_y: y,
+        source: if text.starts_with("PJOY_") {
+            "text-pure-joy".to_string()
+        } else {
+            "text-joy".to_string()
+        },
+    })
 }
 
 /// Get the current profiles configuration (multi-packet response).

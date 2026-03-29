@@ -37,6 +37,22 @@ function buildKeyboardJoystickFace(documentRef: Document, label: string): HTMLEl
   const circle = createElement(documentRef, "div", {
     className: "joystick-circle",
   });
+  circle.dataset.joystickCircle = "";
+
+  const crosshairVertical = createElement(documentRef, "span", {
+    className: "joystick-crosshair joystick-crosshair-vertical",
+  });
+  const crosshairHorizontal = createElement(documentRef, "span", {
+    className: "joystick-crosshair joystick-crosshair-horizontal",
+  });
+  const deadzone = createElement(documentRef, "span", {
+    className: "joystick-deadzone",
+  });
+  const vector = createElement(documentRef, "span", {
+    className: "joystick-vector",
+  });
+  vector.dataset.joystickVector = "";
+  circle.append(crosshairVertical, crosshairHorizontal, deadzone, vector);
 
   const puck = createElement(documentRef, "div", {
     className: "joystick-puck",
@@ -45,10 +61,10 @@ function buildKeyboardJoystickFace(documentRef: Document, label: string): HTMLEl
   circle.appendChild(puck);
 
   const directions: Array<{ className: string; direction: string; label: string }> = [
-    { className: "joystick-dir joystick-w", direction: "up", label: "W" },
-    { className: "joystick-dir joystick-a", direction: "left", label: "A" },
-    { className: "joystick-dir joystick-s", direction: "down", label: "S" },
-    { className: "joystick-dir joystick-d", direction: "right", label: "D" },
+    { className: "joystick-dir joystick-w", direction: "up", label: "Y-" },
+    { className: "joystick-dir joystick-a", direction: "left", label: "X-" },
+    { className: "joystick-dir joystick-s", direction: "down", label: "Y+" },
+    { className: "joystick-dir joystick-d", direction: "right", label: "X+" },
   ];
 
   for (const direction of directions) {
@@ -65,7 +81,38 @@ function buildKeyboardJoystickFace(documentRef: Document, label: string): HTMLEl
     textContent: label,
   });
 
-  return [display, circle, bottomLabel];
+  const axisReadout = createElement(documentRef, "div", {
+    className: "joystick-axis-readout",
+  });
+
+  for (const axis of ["x", "y"] as const) {
+    const row = createElement(documentRef, "div", {
+      className: "joystick-axis-row",
+    });
+    const axisLabel = createElement(documentRef, "span", {
+      className: "joystick-axis-label",
+      textContent: axis.toUpperCase(),
+    });
+    const axisTrack = createElement(documentRef, "span", {
+      className: "joystick-axis-track",
+    });
+    const axisFill = createElement(documentRef, "span", {
+      className: "joystick-axis-fill",
+    });
+    axisFill.dataset.joystickAxisFill = axis;
+    axisTrack.appendChild(axisFill);
+
+    const axisValue = createElement(documentRef, "span", {
+      className: "joystick-axis-value",
+      textContent: "+0%",
+    });
+    axisValue.dataset.joystickAxisValue = axis;
+
+    row.append(axisLabel, axisTrack, axisValue);
+    axisReadout.appendChild(row);
+  }
+
+  return [display, circle, axisReadout, bottomLabel];
 }
 
 export function mountButtonFace(root: HTMLElement, data: ButtonFaceData): void {

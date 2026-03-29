@@ -108,6 +108,10 @@ Written in 65-byte HID reports: byte 0 = 0x00 (report ID), bytes 1-64 = payload 
 | `BOK` | Button bind ACK |
 | `PROK` | Profile operation ACK |
 
+Notes:
+- Live stick motion may arrive as `JOY_<code>_<x>_<y>` even while the device is otherwise using the binary configurator protocol.
+- On Linux, the joystick stream does not necessarily start immediately after opening the configurator HID. In testing against `azeron-linux`, it started only after the host sent the same startup probes the official app sends: `GET_FW_VERSION`, binary `FIRMWARE_VERSION`, `GET_FW_TYPE`, binary `KEYPAD_DETAILS`, and binary `RIGHT_ANALOG`.
+
 ### String Button Bind Format
 
 ```
@@ -285,6 +289,15 @@ Types: cyborg, classic-compact, cyro, cyro-p, cyro-lefty, cyro-lefty-p, cyborg-t
 5. Start 3-second ping interval (`Hi` string or `PING_DEVICE` binary)
 6. Request device details, firmware version, profiles, etc.
 7. Binary pings only sent when idle > 3 seconds
+
+For live analog joystick traffic on the configurator HID, the official Linux app does more than just open the device and ping it. Its startup path primes the stream with:
+- `GET_FW_VERSION`
+- binary `FIRMWARE_VERSION`
+- `GET_FW_TYPE`
+- binary `KEYPAD_DETAILS`
+- binary `RIGHT_ANALOG`
+
+Without that sequence, the interface may stay open but never emit `JOY_*` packets.
 
 ### Command Queue
 

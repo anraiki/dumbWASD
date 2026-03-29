@@ -2399,6 +2399,71 @@ html, body {
   text-align: center;
 }
 
+.joystick-axis-readout {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+}
+
+.joystick-axis-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(233, 228, 223, 0.76);
+}
+
+.joystick-axis-label,
+.joystick-axis-value {
+  font-weight: 700;
+}
+
+.joystick-axis-value {
+  text-align: right;
+}
+
+.joystick-axis-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(124, 160, 255, 0.26) 0 50%, rgba(255, 170, 124, 0.26) 50% 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.joystick-axis-track::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%);
+}
+
+.joystick-axis-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(90deg, rgba(255, 211, 190, 0.38), rgba(255, 240, 230, 0.92));
+  opacity: 0.82;
+  transition: width 55ms linear, opacity 70ms ease;
+}
+
+.joystick-axis-fill.is-active {
+  opacity: 1;
+}
+
 .joystick-circle {
   position: relative;
   width: 80px;
@@ -2422,6 +2487,60 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.joystick-crosshair {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+  z-index: 0;
+}
+
+.joystick-crosshair-vertical {
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.joystick-crosshair-horizontal {
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.joystick-deadzone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+  z-index: 0;
+}
+
+.joystick-vector {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 2px;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 193, 163, 0.22), rgba(255, 232, 220, 0.85));
+  box-shadow: 0 0 10px rgba(255, 214, 190, 0.18);
+  transform-origin: 0 50%;
+  opacity: 0.45;
+  z-index: 0;
+}
+
+.joystick-vector.is-active {
+  opacity: 1;
 }
 
 .joystick-puck {

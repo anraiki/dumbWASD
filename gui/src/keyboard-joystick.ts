@@ -13,13 +13,26 @@ interface KeyboardJoystickPresentation {
   resolvedDirections: Record<KeyboardJoystickDirection, boolean>;
   displayText: string;
   isActive: boolean;
+  axisX: number;
+  axisY: number;
+  magnitude: number;
   offsetX: number;
   offsetY: number;
 }
 
 interface KeyboardJoystickBindings {
   display: HTMLElement | null;
+  circle: HTMLElement | null;
   puck: HTMLElement | null;
+  vector: HTMLElement | null;
+  axisValues: {
+    x: HTMLElement | null;
+    y: HTMLElement | null;
+  };
+  axisFills: {
+    x: HTMLElement | null;
+    y: HTMLElement | null;
+  };
   directions: Partial<Record<KeyboardJoystickDirection, HTMLElement | null>>;
   frameId: number | null;
   pendingState: KeyboardJoystickState | null;
@@ -36,7 +49,7 @@ interface KeyboardJoystickDirectionConfig {
 }
 
 const MAX_PUCK_OFFSET_PX = 26;
-export const KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT = "Keyboard Joystick";
+export const KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT = "Analog Joystick";
 const ANALOG_DIRECTION_THRESHOLD = 0.24;
 const ANALOG_ACTIVE_EPSILON = 0.04;
 
@@ -94,6 +107,11 @@ function clampAnalogValue(value: number): number {
   return Math.max(-1, Math.min(1, value));
 }
 
+function formatAnalogPercent(value: number): string {
+  const percent = Math.round(clampAnalogValue(value) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}%`;
+}
+
 export function setKeyboardJoystickAnalog(
   state: KeyboardJoystickState,
   x: number,
@@ -135,11 +153,21 @@ function getKeyboardJoystickPresentation(state: KeyboardJoystickState): Keyboard
     .map(({ label }) => label);
   const offsetX = xAxis * MAX_PUCK_OFFSET_PX;
   const offsetY = yAxis * MAX_PUCK_OFFSET_PX;
+  const displayText = hasAnalog
+    ? magnitude >= ANALOG_ACTIVE_EPSILON
+      ? `X ${formatAnalogPercent(xAxis)} · Y ${formatAnalogPercent(yAxis)}`
+      : KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT
+    : activeLabels.length > 0
+      ? activeLabels.join(" + ")
+      : KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT;
 
   return {
     resolvedDirections,
-    displayText: activeLabels.length > 0 ? activeLabels.join(" + ") : KEYBOARD_JOYSTICK_IDLE_DISPLAY_TEXT,
+    displayText,
     isActive: hasAnalog ? magnitude >= ANALOG_ACTIVE_EPSILON : activeLabels.length > 0,
+    axisX: xAxis,
+    axisY: yAxis,
+    magnitude,
     offsetX,
     offsetY,
   };
@@ -153,7 +181,17 @@ function getKeyboardJoystickBindings(root: ParentNode): KeyboardJoystickBindings
 
   bindings = {
     display: root.querySelector<HTMLElement>("[data-joystick-display]"),
+    circle: root.querySelector<HTMLElement>("[data-joystick-circle]"),
     puck: root.querySelector<HTMLElement>("[data-joystick-puck]"),
+    vector: root.querySelector<HTMLElement>("[data-joystick-vector]"),
+    axisValues: {
+      x: root.querySelector<HTMLElement>("[data-joystick-axis-value=\"x\"]"),
+      y: root.querySelector<HTMLElement>("[data-joystick-axis-value=\"y\"]"),
+    },
+    axisFills: {
+      x: root.querySelector<HTMLElement>("[data-joystick-axis-fill=\"x\"]"),
+      y: root.querySelector<HTMLElement>("[data-joystick-axis-fill=\"y\"]"),
+    },
     directions: {},
     frameId: null,
     pendingState: null,
@@ -183,6 +221,12 @@ function renderKeyboardJoystickState(
 ): void {
   const presentation = getKeyboardJoystickPresentation(state);
   const transform = `translate(-50%, -50%) translate3d(${presentation.offsetX.toFixed(1)}px, ${presentation.offsetY.toFixed(1)}px, 0)`;
+  const vectorTransform = `translateY(-50%) rotate(${Math.atan2(presentation.axisY, presentation.axisX)}rad)`;
+  const vectorWidth = `${(presentation.magnitude * MAX_PUCK_OFFSET_PX).toFixed(1)}px`;
+  const axisXPercent = `${((presentation.axisX + 1) * 50).toFixed(1)}%`;
+  const axisYPercent = `${((presentation.axisY + 1) * 50).toFixed(1)}%`;
+  const axisXText = formatAnalogPercent(presentation.axisX);
+  const axisYText = formatAnalogPercent(presentation.axisY);
 
   if (bindings.display) {
     if (bindings.lastDisplayText !== presentation.displayText) {
@@ -194,6 +238,12 @@ function renderKeyboardJoystickState(
     }
   }
 
+  if (bindings.circle) {
+    bindings.circle.style.setProperty("--joystick-x", presentation.axisX.toFixed(3));
+    bindings.circle.style.setProperty("--joystick-y", presentation.axisY.toFixed(3));
+    bindings.circle.style.setProperty("--joystick-magnitude", presentation.magnitude.toFixed(3));
+  }
+
   if (bindings.puck) {
     if (bindings.lastTransform !== transform) {
       bindings.puck.style.transform = transform;
@@ -202,6 +252,27 @@ function renderKeyboardJoystickState(
     if (bindings.lastActive !== presentation.isActive) {
       bindings.puck.classList.toggle("is-active", presentation.isActive);
     }
+  }
+
+  if (bindings.vector) {
+    bindings.vector.style.transform = vectorTransform;
+    bindings.vector.style.width = vectorWidth;
+    bindings.vector.classList.toggle("is-active", presentation.isActive);
+  }
+
+  if (bindings.axisFills.x) {
+    bindings.axisFills.x.style.width = axisXPercent;
+    bindings.axisFills.x.classList.toggle("is-active", presentation.isActive);
+  }
+  if (bindings.axisFills.y) {
+    bindings.axisFills.y.style.width = axisYPercent;
+    bindings.axisFills.y.classList.toggle("is-active", presentation.isActive);
+  }
+  if (bindings.axisValues.x) {
+    bindings.axisValues.x.textContent = axisXText;
+  }
+  if (bindings.axisValues.y) {
+    bindings.axisValues.y.textContent = axisYText;
   }
 
   for (const { direction } of DIRECTION_CONFIG) {

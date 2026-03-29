@@ -738,6 +738,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dumbwasd-core",
+ "hidapi",
  "tokio",
  "tracing",
  "tracing-subscriber",

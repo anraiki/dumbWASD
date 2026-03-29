@@ -2,10 +2,12 @@ use anyhow::Result;
 use dumbwasd_core::core::event::{InputEvent, OutputAction};
 use dumbwasd_core::core::profile::Mapping;
 use dumbwasd_core::devices::azeron;
+use dumbwasd_core::devices::azeron::JoystickState as AzeronJoystickState;
 use dumbwasd_core::platform::linux::LinuxInput;
 use dumbwasd_core::platform::{InputBackend, OutputBackend};
 use serde::Serialize;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -30,12 +32,11 @@ pub struct AxisState {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct AzeronJoystickState {
-    pub x: i32,
-    pub y: i32,
-    pub raw_x: i32,
-    pub raw_y: i32,
-    pub source: String,
+pub struct AzeronHidReport {
+    pub length: usize,
+    pub hex: String,
+    pub ascii: Option<String>,
+    pub parsed_source: Option<String>,
 }
 
 pub struct MonitorState {
@@ -148,6 +149,9 @@ async fn monitor_devices(
             }
             MonitoredEvent::Axis(axis) => {
                 let _ = app.emit("axis-state", &axis);
+            }
+            MonitoredEvent::AzeronHidReport(report) => {
+                let _ = app.emit("azeron-hid-report", &report);
             }
             MonitoredEvent::AzeronJoystick(joystick) => {
                 let _ = app.emit("azeron-joystick-state", &joystick);
@@ -282,92 +286,83 @@ async fn emit_output_actions(output: &SharedOutput, actions: &[OutputAction]) ->
 fn read_azeron_hid_events(tx: tokio::sync::mpsc::Sender<MonitoredEvent>) -> Result<()> {
     let device = azeron::open_config_device()?;
     let mut buf = [0u8; 64];
+    let mut last_ping_at = Instant::now() - Duration::from_secs(10);
 
     tracing::info!("listening on Azeron config HID interface");
+    azeron::prime_joystick_stream(&device)?;
 
     loop {
+        if last_ping_at.elapsed() >= Duration::from_secs(3) {
+            if let Err(error) = azeron::ping_device_binary(&device) {
+                tracing::debug!("azeron hid ping failed: {error:#}");
+            } else {
+                last_ping_at = Instant::now();
+            }
+        }
+
         let n = device.read_timeout(&mut buf, 100)?;
         if n == 0 {
             continue;
         }
 
         let report = &buf[..n];
-        let Some(joystick) = parse_azeron_joystick_state(report) else {
-            continue;
+        let joystick = azeron::parse_joystick_state(report);
+        let hid_report = AzeronHidReport {
+            length: n,
+            hex: format_hex(report),
+            ascii: format_ascii(report),
+            parsed_source: joystick.as_ref().map(|state| state.source.clone()),
         };
 
         if tx
-            .blocking_send(MonitoredEvent::AzeronJoystick(joystick))
+            .blocking_send(MonitoredEvent::AzeronHidReport(hid_report))
             .is_err()
         {
             break;
+        }
+
+        if let Some(joystick) = joystick {
+            if tx
+                .blocking_send(MonitoredEvent::AzeronJoystick(joystick))
+                .is_err()
+            {
+                break;
+            }
         }
     }
 
     Ok(())
 }
 
-fn parse_azeron_joystick_state(report: &[u8]) -> Option<AzeronJoystickState> {
-    if report.first().is_some_and(|byte| byte.is_ascii_graphic()) {
-        return parse_azeron_text_joystick_state(report);
-    }
-
-    parse_azeron_binary_joystick_state(report)
-}
-
-fn parse_azeron_binary_joystick_state(report: &[u8]) -> Option<AzeronJoystickState> {
-    const KEYPAD_STATUS: u8 = 1;
-    const HEADER_LEN: usize = 7;
-
-    if report.len() < HEADER_LEN || report[2] != KEYPAD_STATUS {
-        return None;
-    }
-
-    let payload_len = report[6] as usize;
-    if report.len() < HEADER_LEN + payload_len || payload_len < 14 {
-        return None;
-    }
-
-    let payload = &report[HEADER_LEN..HEADER_LEN + payload_len];
-
-    Some(AzeronJoystickState {
-        raw_x: i16::from_le_bytes([payload[6], payload[7]]) as i32,
-        raw_y: i16::from_le_bytes([payload[8], payload[9]]) as i32,
-        x: i16::from_le_bytes([payload[10], payload[11]]) as i32,
-        y: i16::from_le_bytes([payload[12], payload[13]]) as i32,
-        source: "binary-keypad-status".to_string(),
-    })
-}
-
-fn parse_azeron_text_joystick_state(report: &[u8]) -> Option<AzeronJoystickState> {
-    let text_end = report
+fn format_hex(report: &[u8]) -> String {
+    report
         .iter()
-        .position(|&byte| byte == b'\r' || byte == b'\n' || byte == 0)
-        .unwrap_or(report.len());
-    let text = std::str::from_utf8(&report[..text_end]).ok()?.trim();
-    let payload = text
-        .strip_prefix("JOY_")
-        .or_else(|| text.strip_prefix("PJOY_"))?;
-    let mut parts = payload.split('_');
-    let _code = parts.next()?;
-    let x = parts.next()?.parse::<i32>().ok()?;
-    let y = parts.next()?.parse::<i32>().ok()?;
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
-    Some(AzeronJoystickState {
-        x,
-        y,
-        raw_x: x,
-        raw_y: y,
-        source: if text.starts_with("PJOY_") {
-            "text-pure-joy".to_string()
-        } else {
-            "text-joy".to_string()
-        },
-    })
+fn format_ascii(report: &[u8]) -> Option<String> {
+    let ascii = report
+        .iter()
+        .map(|byte| match byte {
+            0x20..=0x7e => char::from(*byte),
+            _ => '.',
+        })
+        .collect::<String>()
+        .trim_matches('.')
+        .to_string();
+
+    if ascii.is_empty() {
+        None
+    } else {
+        Some(ascii)
+    }
 }
 
 enum MonitoredEvent {
     Button(ButtonState),
     Axis(AxisState),
+    AzeronHidReport(AzeronHidReport),
     AzeronJoystick(AzeronJoystickState),
 }
