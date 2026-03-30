@@ -525,30 +525,14 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
+  padding: 20px;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.device-artwork-frame {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(20px, 4vw, 44px);
-  border: 1px solid rgba(112, 128, 184, 0.24);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top, rgba(77, 166, 255, 0.14), transparent 42%),
-    linear-gradient(180deg, rgba(28, 35, 62, 0.9), rgba(17, 22, 40, 0.92));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 22px 60px rgba(0, 0, 0, 0.28);
-}
-
 .device-artwork-svg {
   width: min(100%, 520px);
+  min-height: 500px;
   max-height: 100%;
   user-select: none;
   -webkit-user-select: none;
@@ -573,19 +557,17 @@ html, body {
 .device-artwork-bindable:hover,
 .device-artwork-bindable:focus-visible,
 .device-artwork-hit-target.selected {
-  fill: rgba(241, 212, 128, 0.2) !important;
+  fill: rgba(241, 212, 128, 0.52) !important;
   fill-opacity: 1 !important;
-  stroke: rgba(241, 212, 128, 0.9) !important;
-  stroke-width: 3px !important;
-  filter: drop-shadow(0 0 12px rgba(241, 212, 128, 0.35));
+  filter: drop-shadow(0 0 12px rgba(241, 212, 128, 0.28));
 }
 
 .device-artwork-hit-target.active {
-  fill: rgba(77, 166, 255, 0.7) !important;
+  fill: rgba(77, 166, 255, 0.82) !important;
   fill-opacity: 1 !important;
-  stroke: #8ec5ff !important;
-  stroke-width: 3px !important;
-  filter: drop-shadow(0 0 10px rgba(77, 166, 255, 0.45));
+  stroke: rgba(205, 233, 255, 0.7) !important;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 10px rgba(77, 166, 255, 0.38));
 }
 
 .button-grid {
