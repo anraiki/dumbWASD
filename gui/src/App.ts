@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createDeviceSelector } from "./device-selector";
-import { createButtonGrid, type ButtonGrid } from "./button-grid";
-import { createLayoutEditor, type LayoutEditorHandle } from "./react-flow-editor";
+import { type ButtonGrid } from "./button-grid";
+import { type LayoutEditorHandle } from "./react-flow-editor";
 import { createProfileDrawer } from "./profile-drawer";
 import { createDeviceBar, type ProfileDevice } from "./device-bar";
 import { showDeviceModal, type DeviceEntry } from "./device-modal";
@@ -17,16 +17,10 @@ import { createJoystickTracker } from "@devices/azeron/joystick";
 import { createBindingPopover } from "./binding-popover";
 import { createLegacyBinder, type LegacyBinderHandle } from "./binder/legacy";
 import { createBindingPopoverController, type BindingPopoverController } from "./binder/popover";
-import {
-  type DeviceSvgConfig,
-  type DeviceSvgHandle,
-  createDeviceSvgPreview,
-} from "./devices/layout";
-import { G502_SVG_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
-import { XBOX_SVG_CONFIG } from "./devices/xbox";
+import { type DeviceSvgHandle } from "./devices/layout";
+import { createWorkspace, type WorkspaceHandle } from "./workspace/workspace";
 import {
   type ProfileManagerHandle,
-  normalizeDeviceLabel,
   createProfileManager,
 } from "./profile-manager";
 
@@ -284,6 +278,7 @@ export async function createApp(container: HTMLElement) {
   let monitor!: MonitorHandle;
   let legacyBinder!: LegacyBinderHandle;
   let bindingController!: BindingPopoverController;
+  let workspace!: WorkspaceHandle;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
   let deviceSvgPreview: DeviceSvgHandle | null = null;
@@ -298,43 +293,6 @@ export async function createApp(container: HTMLElement) {
     allDevices = await invoke<DeviceEntry[]>("list_devices");
   } catch (e) {
     statusEl.textContent = `Error loading devices: ${e}`;
-  }
-
-  function isG502XDevice(device: ProfileDevice | null): boolean {
-    if (!device || device.vendor_id !== G502_VENDOR_ID) {
-      return false;
-    }
-
-    const labels = [device.name, device.raw_name]
-      .map((value) => normalizeDeviceLabel(value))
-      .filter(Boolean);
-
-    return labels.some((label) => label.includes(G502_MODEL_SUBSTRING));
-  }
-
-  function getDeviceSvgConfig(device: ProfileDevice | null): DeviceSvgConfig | null {
-    if (!device) {
-      return null;
-    }
-
-    if (isG502XDevice(device)) {
-      return G502_SVG_CONFIG;
-    }
-
-    if (device.device_kind === "gamepad") {
-      return XBOX_SVG_CONFIG;
-    }
-
-    return null;
-  }
-
-
-  function applyJoystickVectorToWorkspace() {
-    const v = joystickTracker.getCurrentVector();
-    if (!v) return;
-    buttonGrid?.setJoystickVector(v.x, v.y);
-    layoutEditor?.setJoystickVector(v.x, v.y);
-    deviceSvgPreview?.setJoystickVector(v.x, v.y);
   }
 
   async function showDeviceProperties(device: ProfileDevice) {
@@ -367,7 +325,7 @@ export async function createApp(container: HTMLElement) {
 
     isEditMode = true;
     toggleModeBtn.textContent = "View Mode";
-    renderWorkspace();
+    workspace.render();
     statusEl.textContent = `Editing layout: ${currentLayout.device.name}`;
   }
 
@@ -536,8 +494,8 @@ export async function createApp(container: HTMLElement) {
     clearCloseDeviceContextMenu: () => { closeDeviceContextMenu = null; },
     confirmExitEditModeIfDirty,
     stopMonitoring: () => monitor.stop(),
-    renderWorkspace,
-    syncAuxPanels,
+    renderWorkspace: () => workspace.render(),
+    syncAuxPanels: () => workspace.syncAuxPanels(),
     syncMonitoringScope: (force) => monitor.syncScope(force),
   });
 
@@ -579,7 +537,7 @@ export async function createApp(container: HTMLElement) {
     getLayoutEditor: () => layoutEditor,
     getDeviceSvgPreview: () => deviceSvgPreview,
     emitLegacyButtonMapping: (code, pressed) => legacyBinder.emit(code, pressed),
-    syncAuxPanels,
+    syncAuxPanels: () => workspace.syncAuxPanels(),
   });
 
   bindingController = createBindingPopoverController({
@@ -595,161 +553,28 @@ export async function createApp(container: HTMLElement) {
     },
   });
 
-  function renderViewMode() {
-    const currentLayout = profileManager.getCurrentLayout();
-    if (!currentLayout) return;
-    gridContainer.classList.remove("macro-workspace-host");
-    macroStudio.unmount();
-
-    if (layoutEditor) {
-      try { layoutEditor.destroy(); } catch (e) { console.warn('Error destroying layout editor:', e); }
-      layoutEditor = null;
-    }
-
-    buttonGrid?.destroy();
-    gridContainer.innerHTML = "";
-    buttonGrid = createButtonGrid(gridContainer, currentLayout, {
-      onButtonClick(button, element) {
-        bindingController.open(button, element);
-      },
-    });
-    buttonGrid.clearAll();
-    for (const code of pressedButtons) {
-      buttonGrid.setButtonState(code, true);
-    }
-    applyJoystickVectorToWorkspace();
-  }
-
-  function renderEditMode() {
-    const currentLayout = profileManager.getCurrentLayout();
-    if (!currentLayout) return;
-    gridContainer.classList.remove("macro-workspace-host");
-    macroStudio.unmount();
-
-    buttonGrid?.destroy();
-    gridContainer.innerHTML = "";
-    buttonGrid = null;
-    gridContainer.style.height = "100%";
-
-    layoutEditor = createLayoutEditor(gridContainer, currentLayout, {
-      onSave: async (updatedLayout) => {
-        const selectedLayout = profileManager.getSelectedLayout();
-        try {
-          await invoke("save_layout", { name: selectedLayout, layout: updatedLayout });
-          statusEl.textContent = "Layout saved successfully!";
-
-          if (selectedLayout) {
-            await profileManager.loadLayout(selectedLayout);
-          }
-        } catch (e) {
-          statusEl.textContent = `Error saving layout: ${e}`;
-        }
-      },
-    });
-    requestAnimationFrame(() => {
-      layoutEditor?.clearAll();
-      for (const code of pressedButtons) {
-        layoutEditor?.setButtonState(code, true);
-      }
-      applyJoystickVectorToWorkspace();
-    });
-  }
-
-  function renderDeviceSvgPreview() {
-    deviceSvgPreview?.destroy();
-    deviceSvgPreview = null;
-
-    const svgConfig = getDeviceSvgConfig(profileManager.getSelectedDevice());
-    if (!svgConfig) {
-      gridContainer.innerHTML = "";
-      return;
-    }
-
-    gridContainer.innerHTML = `
-      <section class="device-svg-preview" aria-label="${svgConfig.previewLabel}"></section>
-    `;
-
-    const frame = gridContainer.querySelector<HTMLElement>(".device-svg-preview");
-    if (!frame) {
-      return;
-    }
-
-    frame.innerHTML = svgConfig.markup;
-
-    const svg = frame.querySelector<SVGElement>("svg");
-    if (!svg) {
-      return;
-    }
-
-    svg.classList.add("device-svg");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("focusable", "false");
-
-    deviceSvgPreview = createDeviceSvgPreview(svg, svgConfig, {
-      onButtonClick(button, element) {
-        bindingController.open(button, element);
-      },
-    });
-    deviceSvgPreview.clearAll();
-    for (const code of pressedButtons) {
-      deviceSvgPreview.setButtonState(code, true);
-    }
-    const currentJoystickVector = joystickTracker.getCurrentVector();
-    if (currentJoystickVector) {
-      deviceSvgPreview.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
-    }
-  }
-
-  function renderWorkspace() {
-    bindingController.close();
-    syncAuxPanels();
-
-    if (isMacroMode) {
-      deviceSvgPreview?.destroy();
-      deviceSvgPreview = null;
-      if (layoutEditor) {
-        try { layoutEditor.destroy(); } catch (_) {}
-        layoutEditor = null;
-      }
-      buttonGrid?.destroy();
-      buttonGrid = null;
-      gridContainer.innerHTML = "";
-      gridContainer.classList.add("macro-workspace-host");
-      macroStudio.mount(gridContainer);
-      macroStudio.setMonitoringActive(monitor.isActive());
-      return;
-    }
-
-    gridContainer.classList.remove("macro-workspace-host");
-    macroStudio.unmount();
-
-    if (!profileManager.getCurrentLayout()) {
-      if (layoutEditor) {
-        try { layoutEditor.destroy(); } catch (_) {}
-        layoutEditor = null;
-      }
-      buttonGrid?.destroy();
-      buttonGrid = null;
-      renderDeviceSvgPreview();
-      return;
-    }
-
-    deviceSvgPreview?.destroy();
-    deviceSvgPreview = null;
-
-    if (isEditMode) {
-      renderEditMode();
-    } else {
-      renderViewMode();
-    }
-  }
-
-  function syncAuxPanels() {
-    eventLogContainer.style.display = monitor.isActive() && !isMacroMode ? "flex" : "none";
-    actionBar.style.display = isMacroMode ? "none" : "flex";
-    toggleModeBtn.disabled = isMacroMode;
-    listenAllDevicesToggle.disabled = isMacroMode;
-  }
+  workspace = createWorkspace({
+    gridContainer,
+    statusEl,
+    actionBar,
+    eventLogContainer,
+    toggleModeBtn,
+    listenAllDevicesToggle,
+    getIsEditMode: () => isEditMode,
+    getIsMacroMode: () => isMacroMode,
+    getButtonGrid: () => buttonGrid,
+    setButtonGrid: (grid) => { buttonGrid = grid; },
+    getLayoutEditor: () => layoutEditor,
+    setLayoutEditor: (editor) => { layoutEditor = editor; },
+    getDeviceSvgPreview: () => deviceSvgPreview,
+    setDeviceSvgPreview: (preview) => { deviceSvgPreview = preview; },
+    pressedButtons,
+    macroStudio,
+    getIsMonitoringActive: () => monitor.isActive(),
+    profileManager,
+    joystickTracker,
+    bindingController,
+  });
 
   // ── Toggle View/Edit mode ──
   toggleModeBtn.addEventListener("click", async () => {
@@ -764,7 +589,7 @@ export async function createApp(container: HTMLElement) {
     toggleModeBtn.textContent = isEditMode ? "View Mode" : "Edit Mode";
 
     if (profileManager.getCurrentLayout()) {
-      renderWorkspace();
+      workspace.render();
     }
   });
 
@@ -778,7 +603,7 @@ export async function createApp(container: HTMLElement) {
 
     isMacroMode = !isMacroMode;
     macroBtn.classList.toggle("active", isMacroMode);
-    renderWorkspace();
+    workspace.render();
     await monitor.syncScope(true);
     const currentLayout = profileManager.getCurrentLayout();
     statusEl.textContent = isMacroMode
@@ -803,7 +628,7 @@ export async function createApp(container: HTMLElement) {
     }
   } catch (_) {}
 
-  syncAuxPanels();
+  workspace.syncAuxPanels();
 
   // Dismiss loading overlay
   const overlay = container.querySelector<HTMLElement>("#loading-overlay");
