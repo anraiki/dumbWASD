@@ -12,7 +12,7 @@ import { createBindingPopoverController, type BindingPopoverController } from ".
 import { createWorkspace, type WorkspaceHandle } from "./workspace/workspace";
 import { type ProfileManagerHandle, createProfileManager } from "./profile-manager";
 import { createAppState } from "./store/app-state";
-import { initStore } from "./init";
+import { loadStartupData } from "./init";
 import { setupWindowChrome } from "./components/app/window-chrome";
 import { createDeviceBarController } from "./components/app/device-bar-controller";
 import { setupModeControls, type ModeControlsHandle } from "./components/app/mode-controls";
@@ -73,7 +73,9 @@ export async function createApp(container: HTMLElement) {
   let workspace!: WorkspaceHandle;
 
   const state = createAppState();
-  await initStore(state, statusEl);
+  const { allDevices, layouts } = await loadStartupData(statusEl);
+  state.setAllDevices(allDevices);
+  state.setLayouts(layouts);
 
   function findDeviceEntryByPath(path: string): DeviceEntry | null {
     return state.allDevices.find((device) => device.paths.includes(path)) ?? null;

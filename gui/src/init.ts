@@ -1,19 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppState } from "./store/app-state";
 import type { DeviceEntry } from "./device-modal";
 
-export async function initStore(store: AppState, statusEl: HTMLElement): Promise<void> {
+export interface StartupData {
+  allDevices: DeviceEntry[];
+  layouts: string[];
+}
+
+export async function loadStartupData(statusEl: HTMLElement): Promise<StartupData> {
+  let allDevices: DeviceEntry[] = [];
   try {
-    const allDevices = await invoke<DeviceEntry[]>("list_devices");
-    store.setAllDevices(allDevices);
+    allDevices = await invoke<DeviceEntry[]>("list_devices");
   } catch (e) {
     statusEl.textContent = `Error loading devices: ${e}`;
   }
 
+  let layouts: string[] = [];
   try {
-    const layouts = await invoke<string[]>("list_layouts");
-    store.setLayouts(layouts);
+    layouts = await invoke<string[]>("list_layouts");
   } catch (e) {
     statusEl.textContent = `Error loading layouts: ${e}`;
   }
+
+  return { allDevices, layouts };
 }
