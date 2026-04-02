@@ -1,7 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { type ButtonGrid } from "./button-grid";
-import { type LayoutEditorHandle } from "./react-flow-editor";
 import { createProfileDrawer } from "./profile-drawer";
 import { type DeviceEntry } from "./device-modal";
 import { createMacroStudio } from "./macro-studio";
@@ -11,9 +9,9 @@ import { createJoystickTracker } from "@devices/azeron/joystick";
 import { createBindingPopover } from "./binding-popover";
 import { createLegacyBinder, type LegacyBinderHandle } from "./binder/legacy";
 import { createBindingPopoverController, type BindingPopoverController } from "./binder/popover";
-import { type DeviceSvgHandle } from "./devices/layout";
 import { createWorkspace, type WorkspaceHandle } from "./workspace/workspace";
 import { type ProfileManagerHandle, createProfileManager } from "./profile-manager";
+import { createAppState } from "./store/app-state";
 import { setupWindowChrome } from "./components/app/window-chrome";
 import { createDeviceBarController } from "./components/app/device-bar-controller";
 import { setupModeControls, type ModeControlsHandle } from "./components/app/mode-controls";
@@ -194,14 +192,6 @@ export async function createApp(container: HTMLElement) {
   let legacyBinder!: LegacyBinderHandle;
   let bindingController!: BindingPopoverController;
   let workspace!: WorkspaceHandle;
-  let buttonGrid: ButtonGrid | null = null;
-  let layoutEditor: LayoutEditorHandle | null = null;
-  let deviceSvgPreview: DeviceSvgHandle | null = null;
-  let isEditMode = false;
-  let isMacroMode = false;
-  let listenAllDevices = false;
-  let closeDeviceContextMenu: (() => void) | null = null;
-  const pressedButtons = new Set<number>();
 
   let allDevices: DeviceEntry[] = [];
   try {
@@ -210,6 +200,8 @@ export async function createApp(container: HTMLElement) {
     statusEl.textContent = `Error loading devices: ${e}`;
   }
 
+  const state = createAppState(allDevices);
+
   function findDeviceEntryByPath(path: string): DeviceEntry | null {
     return allDevices.find((device) => device.paths.includes(path)) ?? null;
   }
@@ -217,7 +209,7 @@ export async function createApp(container: HTMLElement) {
   const eventLogHandle = createEventLog(eventLog, findDeviceEntryByPath);
 
   listenAllDevicesToggle.addEventListener("change", async () => {
-    listenAllDevices = listenAllDevicesToggle.checked;
+    state.setListenAllDevices(listenAllDevicesToggle.checked);
     await monitor.syncScope(true);
   });
 
@@ -246,14 +238,14 @@ export async function createApp(container: HTMLElement) {
     statusEl,
     toggleModeBtn,
     macroBtn,
-    allDevices,
+    allDevices: state.allDevices,
     getProfileManager: () => profileManager,
     getWorkspace: () => workspace,
-    getIsMacroMode: () => isMacroMode,
-    setIsMacroMode: (val) => { isMacroMode = val; },
-    setIsEditMode: (val) => { isEditMode = val; },
-    getCloseDeviceContextMenu: () => closeDeviceContextMenu,
-    setCloseDeviceContextMenu: (fn) => { closeDeviceContextMenu = fn; },
+    getIsMacroMode: state.getIsMacroMode,
+    setIsMacroMode: state.setIsMacroMode,
+    setIsEditMode: state.setIsEditMode,
+    getCloseDeviceContextMenu: state.getCloseDeviceContextMenu,
+    setCloseDeviceContextMenu: state.setCloseDeviceContextMenu,
   });
 
   // ── Layout layouts list ──
@@ -266,7 +258,7 @@ export async function createApp(container: HTMLElement) {
 
   // ── Profile manager ──
   profileManager = createProfileManager({
-    allDevices,
+    allDevices: state.allDevices,
     statusEl,
     gridContainer,
     eventLogContainer,
@@ -274,18 +266,13 @@ export async function createApp(container: HTMLElement) {
     profileDrawer,
     deviceBar,
     getMonitoring: () => monitor.isActive(),
-    getIsMacroMode: () => isMacroMode,
-    getButtonGrid: () => buttonGrid,
-    setButtonGrid: (grid) => { buttonGrid = grid; },
-    getLayoutEditor: () => layoutEditor,
-    destroyLayoutEditor: () => {
-      if (layoutEditor) {
-        try { layoutEditor.destroy(); } catch (_) {}
-        layoutEditor = null;
-      }
-    },
-    getCloseDeviceContextMenu: () => closeDeviceContextMenu,
-    clearCloseDeviceContextMenu: () => { closeDeviceContextMenu = null; },
+    getIsMacroMode: state.getIsMacroMode,
+    getButtonGrid: state.getButtonGrid,
+    setButtonGrid: state.setButtonGrid,
+    getLayoutEditor: state.getLayoutEditor,
+    destroyLayoutEditor: state.destroyLayoutEditor,
+    getCloseDeviceContextMenu: state.getCloseDeviceContextMenu,
+    clearCloseDeviceContextMenu: () => state.setCloseDeviceContextMenu(null),
     confirmExitEditModeIfDirty: () => modeControls.confirmExitEditModeIfDirty(),
     stopMonitoring: () => monitor.stop(),
     renderWorkspace: () => workspace.render(),
@@ -309,27 +296,27 @@ export async function createApp(container: HTMLElement) {
       return entry?.is_azeron ? entry.paths : null;
     },
     onVectorChange: (x, y) => {
-      buttonGrid?.setJoystickVector(x, y);
-      layoutEditor?.setJoystickVector(x, y);
-      deviceSvgPreview?.setJoystickVector(x, y);
+      state.getButtonGrid()?.setJoystickVector(x, y);
+      state.getLayoutEditor()?.setJoystickVector(x, y);
+      state.getDeviceSvgPreview()?.setJoystickVector(x, y);
     },
   });
 
   monitor = createMonitor({
-    allDevices,
+    allDevices: state.allDevices,
     profileManager,
-    getIsMacroMode: () => isMacroMode,
-    getListenAllDevices: () => listenAllDevices,
+    getIsMacroMode: state.getIsMacroMode,
+    getListenAllDevices: state.getListenAllDevices,
     statusEl,
     connectionIndicator,
     reconnectBtn,
     macroStudio,
     joystickTracker,
     eventLogHandle,
-    pressedButtons,
-    getButtonGrid: () => buttonGrid,
-    getLayoutEditor: () => layoutEditor,
-    getDeviceSvgPreview: () => deviceSvgPreview,
+    pressedButtons: state.pressedButtons,
+    getButtonGrid: state.getButtonGrid,
+    getLayoutEditor: state.getLayoutEditor,
+    getDeviceSvgPreview: state.getDeviceSvgPreview,
     emitLegacyButtonMapping: (code, pressed) => legacyBinder.emit(code, pressed),
     syncAuxPanels: () => workspace.syncAuxPanels(),
   });
@@ -338,12 +325,12 @@ export async function createApp(container: HTMLElement) {
     popover: bindingPopover,
     legacyBinder,
     statusEl,
-    getIsEditMode: () => isEditMode,
-    getIsMacroMode: () => isMacroMode,
+    getIsEditMode: state.getIsEditMode,
+    getIsMacroMode: state.getIsMacroMode,
     getHasProfile: () => !!profileManager.getCurrentProfile() && !!profileManager.getCurrentProfileName(),
     onSelectionChange: (code) => {
-      buttonGrid?.setSelected(code);
-      deviceSvgPreview?.setSelected(code);
+      state.getButtonGrid()?.setSelected(code);
+      state.getDeviceSvgPreview()?.setSelected(code);
     },
   });
 
@@ -354,15 +341,15 @@ export async function createApp(container: HTMLElement) {
     eventLogContainer,
     toggleModeBtn,
     listenAllDevicesToggle,
-    getIsEditMode: () => isEditMode,
-    getIsMacroMode: () => isMacroMode,
-    getButtonGrid: () => buttonGrid,
-    setButtonGrid: (grid) => { buttonGrid = grid; },
-    getLayoutEditor: () => layoutEditor,
-    setLayoutEditor: (editor) => { layoutEditor = editor; },
-    getDeviceSvgPreview: () => deviceSvgPreview,
-    setDeviceSvgPreview: (preview) => { deviceSvgPreview = preview; },
-    pressedButtons,
+    getIsEditMode: state.getIsEditMode,
+    getIsMacroMode: state.getIsMacroMode,
+    getButtonGrid: state.getButtonGrid,
+    setButtonGrid: state.setButtonGrid,
+    getLayoutEditor: state.getLayoutEditor,
+    setLayoutEditor: state.setLayoutEditor,
+    getDeviceSvgPreview: state.getDeviceSvgPreview,
+    setDeviceSvgPreview: state.setDeviceSvgPreview,
+    pressedButtons: state.pressedButtons,
     macroStudio,
     getIsMonitoringActive: () => monitor.isActive(),
     profileManager,
@@ -377,11 +364,11 @@ export async function createApp(container: HTMLElement) {
     layoutSelectorEl,
     layouts,
     statusEl,
-    getIsEditMode: () => isEditMode,
-    setIsEditMode: (val) => { isEditMode = val; },
-    getIsMacroMode: () => isMacroMode,
-    setIsMacroMode: (val) => { isMacroMode = val; },
-    getLayoutEditor: () => layoutEditor,
+    getIsEditMode: state.getIsEditMode,
+    setIsEditMode: state.setIsEditMode,
+    getIsMacroMode: state.getIsMacroMode,
+    setIsMacroMode: state.setIsMacroMode,
+    getLayoutEditor: state.getLayoutEditor,
     profileManager,
     workspace,
     monitor,
