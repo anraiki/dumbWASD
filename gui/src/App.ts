@@ -5,7 +5,7 @@ import { createDeviceSelector } from "./device-selector";
 import { createButtonGrid, type ButtonGrid } from "./button-grid";
 import { createLayoutEditor, type LayoutEditorHandle } from "./react-flow-editor";
 import { createProfileDrawer } from "./profile-drawer";
-import { createDeviceBar, type ProfileDevice, type ProfileDeviceKind } from "./device-bar";
+import { createDeviceBar, type ProfileDevice } from "./device-bar";
 import { showDeviceModal, type DeviceEntry } from "./device-modal";
 import { showDeviceContextMenu } from "./device-context-menu";
 import { showDeleteDeviceDialog } from "./device-delete-dialog";
@@ -27,37 +27,12 @@ import {
 } from "./devices/layout";
 import { G502_SVG_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
 import { XBOX_SVG_CONFIG } from "./devices/xbox";
-
-interface DeviceLayout {
-  device: {
-    name: string;
-    vendor_id: number;
-    product_id: number;
-    rows: number;
-    cols: number;
-  };
-  buttons: Array<{
-    id: number;
-    label: string;
-    row: number;
-    col: number;
-  }>;
-}
-
-interface ProfileMeta {
-  name: string;
-  device_name?: string;
-}
-
-interface Profile {
-  profile: ProfileMeta;
-  devices: ProfileDevice[];
-  mappings: Array<{
-    device?: string;
-    from: number;
-    to: MappingTarget;
-  }>;
-}
+import {
+  type Profile,
+  type ProfileManagerHandle,
+  normalizeDeviceLabel,
+  createProfileManager,
+} from "./profile-manager";
 
 interface ButtonStateEvent {
   code: number;
@@ -351,11 +326,7 @@ export async function createApp(container: HTMLElement) {
   });
 
   // ── State ──
-  let currentProfileName: string | null = null;
-  let currentProfile: Profile | null = null;
-  let selectedDeviceInBar: ProfileDevice | null = null;
-  let selectedLayout: string | null = null;
-  let currentLayout: DeviceLayout | null = null;
+  let profileManager!: ProfileManagerHandle;
   let monitoring = false;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
@@ -377,14 +348,6 @@ export async function createApp(container: HTMLElement) {
     allDevices = await invoke<DeviceEntry[]>("list_devices");
   } catch (e) {
     statusEl.textContent = `Error loading devices: ${e}`;
-  }
-
-  function normalizeDeviceLabel(value?: string | null): string {
-    return (value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
   }
 
   function isG502XDevice(device: ProfileDevice | null): boolean {
@@ -415,72 +378,6 @@ export async function createApp(container: HTMLElement) {
     return null;
   }
 
-  function deviceIdentity(device: { id?: string; vendor_id: number; product_id: number }): string {
-    return device.id || `${device.vendor_id}:${device.product_id}`;
-  }
-
-  function findDeviceEntry(device: {
-    id?: string;
-    vendor_id: number;
-    product_id: number;
-    name?: string;
-    raw_name?: string;
-  }): DeviceEntry | null {
-    const identity = deviceIdentity(device);
-    const exactMatch = allDevices.find((entry) => entry.id === identity);
-    if (exactMatch) {
-      return exactMatch;
-    }
-
-    const candidates = allDevices.filter(
-      (entry) => entry.vendor_id === device.vendor_id && entry.product_id === device.product_id
-    );
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const aliases = new Set(
-      [device.name, device.raw_name]
-        .map((value) => normalizeDeviceLabel(value))
-        .filter(Boolean)
-    );
-
-    const namedMatches = candidates.filter((entry) => {
-      const entryLabels = [entry.name, entry.raw_name, entry.id]
-        .map((value) => normalizeDeviceLabel(value))
-        .filter(Boolean);
-      return entryLabels.some((label) => aliases.has(label));
-    });
-
-    if (namedMatches.length === 1) {
-      return namedMatches[0];
-    }
-
-    return candidates.length === 1 ? candidates[0] : null;
-  }
-
-  function getProfileDeviceKind(entry: DeviceEntry | null): ProfileDeviceKind | undefined {
-    if (!entry) return undefined;
-    if (entry.is_azeron) return "azeron";
-    if (entry.has_mouse) return "mouse";
-    if (entry.has_gamepad) return "gamepad";
-    if (entry.has_keyboard) return "keyboard";
-    return undefined;
-  }
-
-  const joystickTracker = createJoystickTracker({
-    isSelectedAzeron: () => selectedDeviceInBar?.device_kind === "azeron",
-    findDeviceByPath: (path) => findDeviceEntryByPath(path),
-    getSelectedDevicePaths: () => {
-      const entry = selectedDeviceInBar ? findDeviceEntry(selectedDeviceInBar) : null;
-      return entry?.is_azeron ? entry.paths : null;
-    },
-    onVectorChange: (x, y) => {
-      buttonGrid?.setJoystickVector(x, y);
-      layoutEditor?.setJoystickVector(x, y);
-      deviceSvgPreview?.setJoystickVector(x, y);
-    },
-  });
 
   function applyJoystickVectorToWorkspace() {
     const v = joystickTracker.getCurrentVector();
@@ -488,29 +385,6 @@ export async function createApp(container: HTMLElement) {
     buttonGrid?.setJoystickVector(v.x, v.y);
     layoutEditor?.setJoystickVector(v.x, v.y);
     deviceSvgPreview?.setJoystickVector(v.x, v.y);
-  }
-
-  function hydrateProfileDevices(devices: ProfileDevice[]): ProfileDevice[] {
-    return devices.map((device) => {
-      const entry = findDeviceEntry(device);
-      const device_kind = device.device_kind ?? getProfileDeviceKind(entry);
-
-      if (!entry && !device_kind) {
-        return device;
-      }
-
-      return {
-        ...device,
-        id: device.id || entry?.id,
-        raw_name: device.raw_name || entry?.raw_name,
-        device_kind,
-      };
-    });
-  }
-
-  function isSameProfileDevice(a: ProfileDevice | null, b: ProfileDevice | null): boolean {
-    if (!a || !b) return false;
-    return deviceIdentity(a) === deviceIdentity(b);
   }
 
   function clearSelectedButtonBindingState() {
@@ -524,6 +398,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function getLegacyButtonMapping(code: number): MappingTarget | null {
+    const currentProfile = profileManager.getCurrentProfile();
     if (!currentProfile) {
       return null;
     }
@@ -548,6 +423,8 @@ export async function createApp(container: HTMLElement) {
   }
 
   async function persistLegacyButtonMapping(code: number, nextTarget: MappingTarget | null) {
+    const currentProfile = profileManager.getCurrentProfile();
+    const currentProfileName = profileManager.getCurrentProfileName();
     if (!currentProfile || !currentProfileName) {
       throw new Error("Select a profile first");
     }
@@ -570,7 +447,7 @@ export async function createApp(container: HTMLElement) {
       profile: nextProfile,
     });
 
-    currentProfile = nextProfile;
+    profileManager.updateProfile(nextProfile);
     await syncMonitoringScope(true);
   }
 
@@ -578,7 +455,7 @@ export async function createApp(container: HTMLElement) {
     button: { id: number; label: string },
     element: Element,
   ) {
-    if (!currentProfile || !currentProfileName || isEditMode || isMacroMode) {
+    if (!profileManager.getCurrentProfile() || !profileManager.getCurrentProfileName() || isEditMode || isMacroMode) {
       return;
     }
 
@@ -606,44 +483,6 @@ export async function createApp(container: HTMLElement) {
     });
   }
 
-  async function persistSelectedDeviceLayout(layoutName: string) {
-    if (!currentProfile || !currentProfileName || !selectedDeviceInBar) {
-      return;
-    }
-
-    const index = currentProfile.devices.findIndex((device) =>
-      isSameProfileDevice(device, selectedDeviceInBar)
-    );
-    if (index < 0) return;
-
-    const currentDevice = currentProfile.devices[index];
-    if (!currentDevice || currentDevice.layout === layoutName) {
-      return;
-    }
-
-    const updatedDevice = {
-      ...currentDevice,
-      layout: layoutName,
-    };
-    const nextDevices = [...currentProfile.devices];
-    nextDevices[index] = updatedDevice;
-
-    const nextProfile: Profile = {
-      ...currentProfile,
-      devices: nextDevices,
-    };
-
-    await invoke("save_profile", {
-      name: currentProfileName,
-      profile: nextProfile,
-    });
-
-    currentProfile = nextProfile;
-    selectedDeviceInBar = updatedDevice;
-    deviceBar.setDevices(currentProfile.devices);
-    deviceBar.setSelected(selectedDeviceInBar);
-  }
-
   async function showDeviceProperties(device: ProfileDevice) {
     const registryToml = await invoke<DeviceRegistryToml | null>("get_device_registry_toml", {
       vendorId: device.vendor_id,
@@ -664,8 +503,9 @@ export async function createApp(container: HTMLElement) {
       macroBtn.classList.remove("active");
     }
 
-    await selectDeviceFromBar(device);
+    await profileManager.selectDevice(device);
 
+    const currentLayout = profileManager.getCurrentLayout();
     if (!currentLayout) {
       statusEl.textContent = `No layout available to edit for ${device.name}`;
       return;
@@ -677,26 +517,12 @@ export async function createApp(container: HTMLElement) {
     statusEl.textContent = `Editing layout: ${currentLayout.device.name}`;
   }
 
-  async function resolveLayoutNameForDevice(device: ProfileDevice): Promise<string | null> {
-    try {
-      return await invoke<string | null>("resolve_layout_for_device", {
-        vendorId: device.vendor_id,
-        productId: device.product_id,
-        name: device.name,
-        rawName: device.raw_name ?? null,
-      });
-    } catch (e) {
-      console.warn("Error resolving default layout:", e);
-      return null;
-    }
-  }
-
   async function confirmExitEditModeIfDirty(): Promise<boolean> {
     if (!isEditMode || !layoutEditor?.hasUnsavedChanges()) {
       return true;
     }
 
-    const layoutName = selectedLayout || currentLayout?.device.name || "this layout";
+    const layoutName = profileManager.getSelectedLayout() || profileManager.getCurrentLayout()?.device.name || "this layout";
     const choice = await showUnsavedLayoutDialog({ layoutName });
 
     if (choice === "cancel") {
@@ -721,14 +547,18 @@ export async function createApp(container: HTMLElement) {
   }
 
   function shouldSuppressMappedInputs(): boolean {
-    if (isMacroMode || listenAllDevices || !selectedDeviceInBar || !currentProfile?.mappings.length) {
+    const selectedDevice = profileManager.getSelectedDevice();
+    const currentProfile = profileManager.getCurrentProfile();
+    if (isMacroMode || listenAllDevices || !selectedDevice || !currentProfile?.mappings.length) {
       return false;
     }
 
-    return selectedDeviceInBar.device_kind === "mouse" || selectedDeviceInBar.device_kind === "keyboard";
+    return selectedDevice.device_kind === "mouse" || selectedDevice.device_kind === "keyboard";
   }
 
   function buildMonitoringRequest(): MonitoringRequest | null {
+    const currentProfile = profileManager.getCurrentProfile();
+    const selectedDevice = profileManager.getSelectedDevice();
     const legacyMappings = currentProfile?.mappings ?? [];
     const suppressMappedInputs = shouldSuppressMappedInputs();
 
@@ -739,7 +569,7 @@ export async function createApp(container: HTMLElement) {
 
       const curatedPaths = currentProfile
         ? currentProfile.devices.flatMap((device) => {
-            const entry = findDeviceEntry(device);
+            const entry = profileManager.findSystemEntry(device);
             return entry ? entry.paths : [];
           })
         : [];
@@ -750,7 +580,7 @@ export async function createApp(container: HTMLElement) {
       return {
         devicePaths,
         label: "Keyboards + curated gamepads",
-        useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
+        useAzeronHid: selectedDevice?.device_kind === "azeron",
         legacyMappings,
         suppressMappedInputs: false,
       };
@@ -763,21 +593,21 @@ export async function createApp(container: HTMLElement) {
       return {
         devicePaths,
         label: "All detected devices",
-        useAzeronHid: selectedDeviceInBar?.device_kind === "azeron",
+        useAzeronHid: selectedDevice?.device_kind === "azeron",
         legacyMappings,
         suppressMappedInputs: false,
       };
     }
 
-    if (!selectedDeviceInBar) return null;
+    if (!selectedDevice) return null;
 
-    const entry = findDeviceEntry(selectedDeviceInBar);
+    const entry = profileManager.findSystemEntry(selectedDevice);
     if (!entry) return null;
 
     return {
       devicePaths: entry.paths,
       label: entry.name,
-      useAzeronHid: entry.is_azeron || selectedDeviceInBar.device_kind === "azeron",
+      useAzeronHid: entry.is_azeron || selectedDevice.device_kind === "azeron",
       legacyMappings,
       suppressMappedInputs,
     };
@@ -815,15 +645,15 @@ export async function createApp(container: HTMLElement) {
   // ── Profile Drawer ──
   const profileDrawer = createProfileDrawer(profileListEl, addProfileBtn, {
     async onSelect(profileName) {
-      await selectProfile(profileName);
+      await profileManager.selectProfile(profileName);
     },
     async onAdd() {
       const name = prompt("New profile name:");
       if (!name || !name.trim()) return;
       try {
         const slug = await invoke<string>("create_profile", { name: name.trim() });
-        await refreshProfileList();
-        await selectProfile(slug);
+        await profileManager.refreshProfileList();
+        await profileManager.selectProfile(slug);
       } catch (e) {
         statusEl.textContent = `Error creating profile: ${e}`;
       }
@@ -835,18 +665,18 @@ export async function createApp(container: HTMLElement) {
     async onSelectDevice(device) {
       closeDeviceContextMenu?.();
       closeDeviceContextMenu = null;
-      await selectDeviceFromBar(device);
+      await profileManager.selectDevice(device);
     },
     async onAddDevice() {
       closeDeviceContextMenu?.();
       closeDeviceContextMenu = null;
-      if (!currentProfile || !currentProfileName) {
+      const currentProfile = profileManager.getCurrentProfile();
+      if (!currentProfile || !profileManager.getCurrentProfileName()) {
         statusEl.textContent = "Select a profile first";
         return;
       }
       showDeviceModal(allDevices, currentProfile.devices, {
         async onSelect(entry) {
-          // Add device to profile
           const newDevice: ProfileDevice = {
             id: entry.id,
             vendor_id: entry.vendor_id,
@@ -854,23 +684,15 @@ export async function createApp(container: HTMLElement) {
             name: entry.name,
             raw_name: entry.raw_name,
             layout: "",
-            device_kind: getProfileDeviceKind(entry),
+            device_kind: profileManager.getDeviceKind(entry),
           };
-          currentProfile!.devices.push(newDevice);
-
-          // Save profile
           try {
-            await invoke("save_profile", {
-              name: currentProfileName,
-              profile: currentProfile,
-            });
+            await profileManager.addDevice(newDevice);
           } catch (e) {
             statusEl.textContent = `Error saving profile: ${e}`;
+            return;
           }
-
-          // Re-render device bar and auto-select the new device
-          deviceBar.setDevices(currentProfile!.devices);
-          await selectDeviceFromBar(newDevice);
+          await profileManager.selectDevice(newDevice);
         },
         onClose() {},
       });
@@ -899,7 +721,7 @@ export async function createApp(container: HTMLElement) {
           showDeleteDeviceDialog({
             device: targetDevice,
             onConfirm: async () => {
-              await deleteDeviceFromProfile(targetDevice);
+              await profileManager.deleteDevice(targetDevice);
             },
           });
         },
@@ -920,199 +742,69 @@ export async function createApp(container: HTMLElement) {
     label: "Layout",
     items: layouts.map((name) => ({ value: name, label: name })),
     async onChange(value) {
-      if (value !== selectedLayout) {
+      if (value !== profileManager.getSelectedLayout()) {
         const canLeaveEditMode = await confirmExitEditModeIfDirty();
         if (!canLeaveEditMode) {
           const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
           if (layoutSelect) {
-            layoutSelect.value = selectedLayout || "";
+            layoutSelect.value = profileManager.getSelectedLayout() || "";
           }
           return;
         }
       }
 
-      selectedLayout = value;
-      await persistSelectedDeviceLayout(value);
-      await loadLayout(value);
+      await profileManager.selectLayout(value);
     },
   });
 
-  // ── Core functions ──
+  // ── Profile manager ──
 
-  async function refreshProfileList() {
-    try {
-      const names = await invoke<string[]>("list_profiles");
-      profileDrawer.setProfiles(names);
-    } catch (e) {
-      statusEl.textContent = `Error loading profiles: ${e}`;
-    }
-  }
-
-  async function selectProfile(name: string) {
-    closeDeviceContextMenu?.();
-    closeDeviceContextMenu = null;
-
-    const canLeaveEditMode = await confirmExitEditModeIfDirty();
-    if (!canLeaveEditMode) {
-      return;
-    }
-
-    // Stop any current monitoring
-    if (monitoring) await stopMonitoring();
-
-    currentProfileName = name;
-    profileDrawer.setSelected(name);
-
-    try {
-      currentProfile = await invoke<Profile>("get_profile", { name });
-      currentProfile.devices = hydrateProfileDevices(currentProfile.devices);
-      statusEl.textContent = `Profile: ${currentProfile.profile.name}`;
-
-      // Populate device bar
-      deviceBar.setDevices(currentProfile.devices);
-      selectedDeviceInBar = null;
-      deviceBar.setSelected(null);
-
-      // Clear main area
-      gridContainer.innerHTML = "";
-      eventLogContainer.style.display = "none";
-      buttonGrid = null;
+  profileManager = createProfileManager({
+    allDevices,
+    statusEl,
+    gridContainer,
+    eventLogContainer,
+    layoutSelectorEl,
+    profileDrawer,
+    deviceBar,
+    getMonitoring: () => monitoring,
+    getIsMacroMode: () => isMacroMode,
+    getButtonGrid: () => buttonGrid,
+    setButtonGrid: (grid) => { buttonGrid = grid; },
+    getLayoutEditor: () => layoutEditor,
+    destroyLayoutEditor: () => {
       if (layoutEditor) {
         try { layoutEditor.destroy(); } catch (_) {}
         layoutEditor = null;
       }
-      currentLayout = null;
-      renderWorkspace();
-      syncAuxPanels();
+    },
+    getCloseDeviceContextMenu: () => closeDeviceContextMenu,
+    clearCloseDeviceContextMenu: () => { closeDeviceContextMenu = null; },
+    confirmExitEditModeIfDirty,
+    stopMonitoring,
+    renderWorkspace,
+    syncAuxPanels,
+    syncMonitoringScope,
+  });
 
-      // Auto-select first device if available
-      if (currentProfile.devices.length > 0) {
-        await selectDeviceFromBar(currentProfile.devices[0]);
-      }
-    } catch (e) {
-      statusEl.textContent = `Error loading profile: ${e}`;
-      currentProfile = null;
-    }
-  }
-
-  async function selectDeviceFromBar(device: ProfileDevice) {
-    closeDeviceContextMenu?.();
-    closeDeviceContextMenu = null;
-
-    if (!isSameProfileDevice(selectedDeviceInBar, device)) {
-      const canLeaveEditMode = await confirmExitEditModeIfDirty();
-      if (!canLeaveEditMode) {
-        deviceBar.setSelected(selectedDeviceInBar);
-        return;
-      }
-    }
-
-    selectedDeviceInBar = device;
-    deviceBar.setSelected(device);
-    statusEl.textContent = device.name;
-
-    const resolvedLayout = device.layout || await resolveLayoutNameForDevice(device);
-
-    // Auto-load a curated layout first, otherwise fall back to a default match.
-    if (resolvedLayout) {
-      selectedLayout = resolvedLayout;
-      // Update the layout selector dropdown to match
-      const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
-      if (layoutSelect) layoutSelect.value = resolvedLayout;
-      await loadLayout(resolvedLayout);
-    } else {
-      // No curated or fallback layout available — clear the workspace.
-      selectedLayout = null;
-      currentLayout = null;
-      const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
-      if (layoutSelect) layoutSelect.value = "";
-      renderWorkspace();
-    }
-
-    await syncMonitoringScope(true);
-  }
-
-  async function deleteDeviceFromProfile(device: ProfileDevice) {
-    if (!currentProfile || !currentProfileName) {
-      throw new Error("Select a profile first");
-    }
-
-    if (isSameProfileDevice(selectedDeviceInBar, device)) {
-      const canLeaveEditMode = await confirmExitEditModeIfDirty();
-      if (!canLeaveEditMode) {
-        return;
-      }
-    }
-
-    const nextDevices = currentProfile.devices.filter(
-      (candidate) => !isSameProfileDevice(candidate, device)
-    );
-
-    if (nextDevices.length === currentProfile.devices.length) {
-      return;
-    }
-
-    const nextProfile: Profile = {
-      ...currentProfile,
-      devices: nextDevices,
-    };
-
-    try {
-      await invoke("save_profile", {
-        name: currentProfileName,
-        profile: nextProfile,
-      });
-    } catch (error) {
-      throw new Error(`Error saving profile: ${error}`);
-    }
-
-    currentProfile = nextProfile;
-    deviceBar.setDevices(currentProfile.devices);
-
-    const deletedSelectedDevice = isSameProfileDevice(selectedDeviceInBar, device);
-    if (deletedSelectedDevice) {
-      selectedDeviceInBar = null;
-      deviceBar.setSelected(null);
-
-      if (currentProfile.devices.length > 0) {
-        await selectDeviceFromBar(currentProfile.devices[0]);
-      } else {
-        currentLayout = null;
-        selectedLayout = null;
-        const layoutSelect = layoutSelectorEl.querySelector<HTMLSelectElement>("select");
-        if (layoutSelect) layoutSelect.value = "";
-        renderWorkspace();
-        await syncMonitoringScope(true);
-        statusEl.textContent = `${device.name} removed from ${currentProfile.profile.name}`;
-      }
-      return;
-    }
-
-    deviceBar.setSelected(selectedDeviceInBar);
-    await syncMonitoringScope(true);
-    if (!monitoring) {
-      statusEl.textContent = `${device.name} removed from ${currentProfile.profile.name}`;
-    }
-  }
-
-  async function loadLayout(name: string) {
-    try {
-      const layout = await invoke<DeviceLayout>("get_layout", { name });
-      currentLayout = layout;
-      renderWorkspace();
-
-      if (!monitoring || !isMacroMode) {
-        statusEl.textContent = `Layout: ${layout.device.name} (${layout.buttons.length} buttons)`;
-      }
-    } catch (e) {
-      statusEl.textContent = `Error loading layout: ${e}`;
-      buttonGrid?.destroy();
-      buttonGrid = null;
-      layoutEditor = null;
-    }
-  }
+  // joystickTracker (moved here — depends on profileManager)
+  const joystickTracker = createJoystickTracker({
+    isSelectedAzeron: () => profileManager.getSelectedDevice()?.device_kind === "azeron",
+    findDeviceByPath: (path) => findDeviceEntryByPath(path),
+    getSelectedDevicePaths: () => {
+      const selected = profileManager.getSelectedDevice();
+      const entry = selected ? profileManager.findSystemEntry(selected) : null;
+      return entry?.is_azeron ? entry.paths : null;
+    },
+    onVectorChange: (x, y) => {
+      buttonGrid?.setJoystickVector(x, y);
+      layoutEditor?.setJoystickVector(x, y);
+      deviceSvgPreview?.setJoystickVector(x, y);
+    },
+  });
 
   function renderViewMode() {
+    const currentLayout = profileManager.getCurrentLayout();
     if (!currentLayout) return;
     gridContainer.classList.remove("macro-workspace-host");
     macroStudio.unmount();
@@ -1137,6 +829,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function renderEditMode() {
+    const currentLayout = profileManager.getCurrentLayout();
     if (!currentLayout) return;
     gridContainer.classList.remove("macro-workspace-host");
     macroStudio.unmount();
@@ -1148,13 +841,13 @@ export async function createApp(container: HTMLElement) {
 
     layoutEditor = createLayoutEditor(gridContainer, currentLayout, {
       onSave: async (updatedLayout) => {
+        const selectedLayout = profileManager.getSelectedLayout();
         try {
           await invoke("save_layout", { name: selectedLayout, layout: updatedLayout });
           statusEl.textContent = "Layout saved successfully!";
 
           if (selectedLayout) {
-            const reloadedLayout = await invoke<DeviceLayout>("get_layout", { name: selectedLayout });
-            currentLayout = reloadedLayout;
+            await profileManager.loadLayout(selectedLayout);
           }
         } catch (e) {
           statusEl.textContent = `Error saving layout: ${e}`;
@@ -1174,7 +867,7 @@ export async function createApp(container: HTMLElement) {
     deviceSvgPreview?.destroy();
     deviceSvgPreview = null;
 
-    const svgConfig = getDeviceSvgConfig(selectedDeviceInBar);
+    const svgConfig = getDeviceSvgConfig(profileManager.getSelectedDevice());
     if (!svgConfig) {
       gridContainer.innerHTML = "";
       return;
@@ -1238,7 +931,7 @@ export async function createApp(container: HTMLElement) {
     gridContainer.classList.remove("macro-workspace-host");
     macroStudio.unmount();
 
-    if (!currentLayout) {
+    if (!profileManager.getCurrentLayout()) {
       if (layoutEditor) {
         try { layoutEditor.destroy(); } catch (_) {}
         layoutEditor = null;
@@ -1278,7 +971,7 @@ export async function createApp(container: HTMLElement) {
     isEditMode = !isEditMode;
     toggleModeBtn.textContent = isEditMode ? "View Mode" : "Edit Mode";
 
-    if (currentLayout) {
+    if (profileManager.getCurrentLayout()) {
       renderWorkspace();
     }
   });
@@ -1295,6 +988,7 @@ export async function createApp(container: HTMLElement) {
     macroBtn.classList.toggle("active", isMacroMode);
     renderWorkspace();
     await syncMonitoringScope(true);
+    const currentLayout = profileManager.getCurrentLayout();
     statusEl.textContent = isMacroMode
       ? "Macro Studio ready. Recording listens across all connected profile keyboards/gamepads."
       : currentLayout
@@ -1433,13 +1127,13 @@ export async function createApp(container: HTMLElement) {
   }
 
   // ── Startup ──
-  await refreshProfileList();
+  await profileManager.refreshProfileList();
 
   // Auto-select first profile
   try {
     const profileNames = await invoke<string[]>("list_profiles");
     if (profileNames.length > 0) {
-      await selectProfile(profileNames[0]);
+      await profileManager.selectProfile(profileNames[0]);
     }
   } catch (_) {}
 
