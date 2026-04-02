@@ -13,7 +13,7 @@ import { showDevicePropertiesDialog } from "./device-properties-dialog";
 import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
 import { createEventLog } from "./event-log";
-import { createJoystickTracker } from "./devices/azeron-joystick";
+import { createJoystickTracker } from "@devices/azeron/joystick";
 import { createBindingPopover } from "./binding-popover";
 import {
   getMappingTargetLabel,
@@ -24,7 +24,7 @@ import {
   type DeviceArtworkConfig,
   type DeviceArtworkPreviewHandle,
   createDeviceArtworkPreview,
-} from "./devices/artwork";
+} from "./devices/layout";
 import { G502_ARTWORK_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
 import { XBOX_ARTWORK_CONFIG } from "./devices/xbox";
 

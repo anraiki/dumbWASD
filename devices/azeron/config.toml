@@ -31,6 +31,13 @@ search_terms = [
   "16d0:10bc",
 ]
 
+[joystick]
+# Raw ADC midpoint and half-span used for -1..1 normalization
+center = 512
+span = 512
+# Keyboard scancodes the Azeron firmware emits for joystick directions (W A S D)
+keyboard_direction_codes = [17, 30, 31, 32]
+
 [source]
 kind = "curated"
 origin = "project-local"

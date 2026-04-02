@@ -1,5 +1,9 @@
-import { isKeyboardJoystickDirectionCode } from "../keyboard-joystick";
-import { JOYSTICK_CENTER, JOYSTICK_SPAN } from "./azeron";
+import config from "./config.toml";
+
+const { center: JOYSTICK_CENTER, span: JOYSTICK_SPAN, keyboard_direction_codes } =
+  (config as { joystick: { center: number; span: number; keyboard_direction_codes: number[] } }).joystick;
+
+const KEYBOARD_DIRECTION_CODES = new Set(keyboard_direction_codes);
 
 const JOYSTICK_AXIS_CODES = new Set([0, 1]);
 const JOYSTICK_ACTIVITY_WINDOW_MS = 140;
@@ -157,7 +161,7 @@ export function createJoystickTracker(options: {
     },
 
     shouldTreatAsEmulated(code: number, pressed: boolean): boolean {
-      if (!options.isSelectedAzeron() || !isKeyboardJoystickDirectionCode(code)) {
+      if (!options.isSelectedAzeron() || !KEYBOARD_DIRECTION_CODES.has(code)) {
         return false;
       }
 

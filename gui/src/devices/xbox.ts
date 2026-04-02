@@ -1,5 +1,5 @@
-import xboxSvgMarkup from "../assets/xbox.svg?raw";
-import type { DeviceArtworkConfig } from "./artwork";
+import xboxSvgMarkup from "@devices/xbox/layout.svg?raw";
+import type { DeviceArtworkConfig } from "./layout";
 
 function sanitizeInlineSvgMarkup(markup: string): string {
   return markup

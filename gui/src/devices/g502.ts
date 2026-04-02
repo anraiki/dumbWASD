@@ -1,5 +1,5 @@
-import logitechG502XSvgMarkup from "../assets/logitech-g502-x.svg?raw";
-import type { DeviceArtworkConfig } from "./artwork";
+import logitechG502XSvgMarkup from "@devices/g502/layout.svg?raw";
+import type { DeviceArtworkConfig } from "./layout";
 
 export const VENDOR_ID = 0x046D; // Logitech
 export const MODEL_SUBSTRING = "g502 x";

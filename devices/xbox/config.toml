@@ -1,0 +1,30 @@
+schema_version = 1
+key = "xbox-controller"
+
+vendor_id = 0x045E
+product_id = 0x02FD
+
+vendor_name = "Microsoft"
+model = "Xbox One Controller"
+friendly_name = "Xbox Controller"
+
+raw_name_aliases = [
+  "Xbox One Controller",
+  "Xbox Controller",
+  "Microsoft X-Box One pad",
+]
+
+capabilities = ["gamepad"]
+button_count = 17
+
+search_terms = [
+  "xbox",
+  "microsoft",
+  "gamepad",
+  "045e:02fd",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "Generic Xbox controller — matched in the frontend by gamepad capability"

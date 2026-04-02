@@ -1,22 +1,17 @@
-/**
- * Azeron Cyborg device identity and hardware constants.
- * Mirrors devices/azeron-cyborg.toml and crates/dumbwasd-core/src/devices/azeron.rs.
- */
+import config from "@devices/azeron/config.toml";
 
-export const VENDOR_ID = 0x16D0;
-export const PRODUCT_ID = 0x10BC;
-export const FRIENDLY_NAME = "Azeron Cyborg";
-export const BUTTON_COUNT = 38;
+const cfg = config as {
+  vendor_id: number;
+  product_id: number;
+  friendly_name: string;
+  button_count: number;
+  raw_name_aliases: string[];
+  capabilities: string[];
+};
 
-export const RAW_NAME_ALIASES = [
-  "Azeron LTD Azeron Keypad",
-  "Azeron Keypad",
-] as const;
-
-export const CAPABILITIES = ["keyboard", "mouse", "joystick"] as const;
-
-/** Joystick center value from the HID report (raw ADC midpoint). */
-export const JOYSTICK_CENTER = 512;
-
-/** Half-span of the joystick range used for normalization. */
-export const JOYSTICK_SPAN = 512;
+export const VENDOR_ID: number = cfg.vendor_id;
+export const PRODUCT_ID: number = cfg.product_id;
+export const FRIENDLY_NAME: string = cfg.friendly_name;
+export const BUTTON_COUNT: number = cfg.button_count;
+export const RAW_NAME_ALIASES: readonly string[] = cfg.raw_name_aliases;
+export const CAPABILITIES: readonly string[] = cfg.capabilities;

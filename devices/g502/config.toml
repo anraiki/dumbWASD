@@ -1,0 +1,29 @@
+schema_version = 1
+key = "logitech-g502-x"
+
+vendor_id = 0x046D
+product_id = 0xC09A
+
+vendor_name = "Logitech"
+model = "G502 X"
+friendly_name = "Logitech G502 X"
+
+raw_name_aliases = [
+  "Logitech G502 X",
+  "G502 X",
+]
+
+capabilities = ["mouse"]
+button_count = 13
+
+search_terms = [
+  "g502",
+  "g502 x",
+  "logitech g502",
+  "046d:c09a",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "Logitech G502 X wired gaming mouse"

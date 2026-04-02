@@ -105,7 +105,9 @@ fn load_records() -> Vec<LoadedRecord> {
 
     let mut paths: Vec<_> = read_dir
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .filter(|path| path.is_dir())
+        .map(|dir| dir.join("config.toml"))
+        .filter(|path| path.exists())
         .collect();
     paths.sort();
 
