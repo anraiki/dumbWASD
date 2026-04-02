@@ -1,13 +1,13 @@
-import config from "@devices/azeron/config.toml";
+import config from "@devices/azeron/config";
 
-const cfg = config as {
+const cfg: {
   vendor_id: number;
   product_id: number;
   friendly_name: string;
   button_count: number;
   raw_name_aliases: string[];
   capabilities: string[];
-};
+} = config;
 
 export const VENDOR_ID: number = cfg.vendor_id;
 export const PRODUCT_ID: number = cfg.product_id;

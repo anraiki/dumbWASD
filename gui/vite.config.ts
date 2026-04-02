@@ -1,11 +1,9 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
-import toml from "vite-plugin-toml";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [toml()],
   resolve: {
     alias: {
       "@devices": resolve(__dirname, "../devices"),
