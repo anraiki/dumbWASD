@@ -13,7 +13,7 @@ import { showDevicePropertiesDialog } from "./device-properties-dialog";
 import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
 import { createEventLog } from "./event-log";
-import { isKeyboardJoystickDirectionCode } from "./keyboard-joystick";
+import { createJoystickTracker } from "./devices/azeron-joystick";
 import { createBindingPopover } from "./binding-popover";
 import {
   getMappingTargetLabel,
@@ -105,12 +105,6 @@ interface DeviceRegistryToml {
 }
 
 const MOUSE_BUTTON_CODES = new Set([272, 273, 274, 275, 276]);
-const JOYSTICK_AXIS_CODES = new Set([0, 1]);
-const JOYSTICK_ACTIVITY_WINDOW_MS = 140;
-const JOYSTICK_DEFAULT_MIN = 0;
-const JOYSTICK_DEFAULT_MAX = 1023;
-const AZERON_JOYSTICK_CENTER = 512;
-const AZERON_JOYSTICK_SPAN = 512;
 
 export async function createApp(container: HTMLElement) {
   const appWindow = getCurrentWindow();
@@ -377,11 +371,6 @@ export async function createApp(container: HTMLElement) {
   let runtimeRemapActive = false;
   let closeDeviceContextMenu: (() => void) | null = null;
   const pressedButtons = new Set<number>();
-  const joystickEmulatedDirectionCodes = new Set<number>();
-  const joystickAxisValues = new Map<string, Map<number, number>>();
-  const joystickAxisNormalized = new Map<string, Map<number, number>>();
-  let lastJoystickMotionAt = 0;
-  let currentJoystickVector: { x: number; y: number } | null = null;
   // Cache system devices at startup
   let allDevices: DeviceEntry[] = [];
   try {
@@ -479,153 +468,26 @@ export async function createApp(container: HTMLElement) {
     return undefined;
   }
 
-  function isLikelyJoystickAxisSource(devicePath: string, deviceName?: string): boolean {
-    const sourceEntry = findDeviceEntryByPath(devicePath);
-    if (sourceEntry) {
-      if (sourceEntry.is_azeron || sourceEntry.has_gamepad) {
-        return true;
-      }
-      if (sourceEntry.has_keyboard || sourceEntry.has_mouse) {
-        const selectedEntry = selectedDeviceInBar ? findDeviceEntry(selectedDeviceInBar) : null;
-        if (selectedEntry?.paths.includes(devicePath) && selectedEntry.is_azeron) {
-          return true;
-        }
-      }
-    }
-
-    const lower = (deviceName || "").toLowerCase();
-    if (lower.includes("keyboard") || lower.includes("mouse")) {
-      return false;
-    }
-    return lower.includes("gamepad") || lower.includes("joystick") || lower.includes("azeron");
-  }
-
-  function shouldUseAzeronHidJoystick(): boolean {
-    return selectedDeviceInBar?.device_kind === "azeron";
-  }
-
-  function recordJoystickMotion(axis: number, value: number, devicePath: string, deviceName?: string) {
-    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(devicePath, deviceName)) {
-      return;
-    }
-
-    let pathAxes = joystickAxisValues.get(devicePath);
-    if (!pathAxes) {
-      pathAxes = new Map<number, number>();
-      joystickAxisValues.set(devicePath, pathAxes);
-    }
-
-    const previous = pathAxes.get(axis);
-    pathAxes.set(axis, value);
-
-    if (previous === undefined || previous !== value) {
-      lastJoystickMotionAt = Date.now();
-    }
-  }
-
-  function normalizeJoystickAxisValue(value: number, minimum?: number, maximum?: number, flat?: number): number {
-    const min = minimum ?? JOYSTICK_DEFAULT_MIN;
-    const max = maximum ?? JOYSTICK_DEFAULT_MAX;
-    if (max <= min) {
-      return 0;
-    }
-
-    const center = min + (max - min) / 2;
-    const span = Math.max((max - min) / 2, 1);
-    const normalized = Math.max(-1, Math.min(1, (value - center) / span));
-    if (!flat) {
-      return normalized;
-    }
-
-    const deadzone = Math.min(Math.abs(flat / span), 0.45);
-    if (Math.abs(normalized) <= deadzone) {
-      return 0;
-    }
-
-    return normalized;
-  }
-
-  function normalizeAzeronJoystickValue(value: number): number {
-    return Math.max(-1, Math.min(1, (value - AZERON_JOYSTICK_CENTER) / AZERON_JOYSTICK_SPAN));
-  }
+  const joystickTracker = createJoystickTracker({
+    isSelectedAzeron: () => selectedDeviceInBar?.device_kind === "azeron",
+    findDeviceByPath: (path) => findDeviceEntryByPath(path),
+    getSelectedDevicePaths: () => {
+      const entry = selectedDeviceInBar ? findDeviceEntry(selectedDeviceInBar) : null;
+      return entry?.is_azeron ? entry.paths : null;
+    },
+    onVectorChange: (x, y) => {
+      buttonGrid?.setJoystickVector(x, y);
+      layoutEditor?.setJoystickVector(x, y);
+      deviceArtworkPreview?.setJoystickVector(x, y);
+    },
+  });
 
   function applyJoystickVectorToWorkspace() {
-    if (!currentJoystickVector) {
-      return;
-    }
-
-    buttonGrid?.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
-    layoutEditor?.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
-    deviceArtworkPreview?.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
-  }
-
-  function updateJoystickVector(
-    axis: number,
-    value: number,
-    devicePath: string,
-    deviceName?: string,
-    minimum?: number,
-    maximum?: number,
-    flat?: number,
-  ) {
-    if (shouldUseAzeronHidJoystick()) {
-      return;
-    }
-    if (!JOYSTICK_AXIS_CODES.has(axis) || !isLikelyJoystickAxisSource(devicePath, deviceName)) {
-      return;
-    }
-
-    let pathAxes = joystickAxisNormalized.get(devicePath);
-    if (!pathAxes) {
-      pathAxes = new Map<number, number>();
-      joystickAxisNormalized.set(devicePath, pathAxes);
-    }
-
-    const normalized = normalizeJoystickAxisValue(value, minimum, maximum, flat);
-    pathAxes.set(axis, normalized);
-
-    currentJoystickVector = {
-      x: pathAxes.get(0) ?? 0,
-      y: pathAxes.get(1) ?? 0,
-    };
-
-    applyJoystickVectorToWorkspace();
-  }
-
-  function updateJoystickVectorFromAzeronHid(payload: AzeronJoystickStateEvent) {
-    if (!shouldUseAzeronHidJoystick()) {
-      return;
-    }
-
-    lastJoystickMotionAt = Date.now();
-    currentJoystickVector = {
-      x: normalizeAzeronJoystickValue(payload.x),
-      y: normalizeAzeronJoystickValue(payload.y),
-    };
-
-    applyJoystickVectorToWorkspace();
-  }
-
-  function shouldTreatAsJoystickEmulated(code: number, pressed: boolean): boolean {
-    if (selectedDeviceInBar?.device_kind !== "azeron" || !isKeyboardJoystickDirectionCode(code)) {
-      return false;
-    }
-
-    if (pressed) {
-      const isRecentJoystickMotion = (Date.now() - lastJoystickMotionAt) <= JOYSTICK_ACTIVITY_WINDOW_MS;
-      if (isRecentJoystickMotion) {
-        joystickEmulatedDirectionCodes.add(code);
-        return true;
-      }
-      return false;
-    }
-
-    if (joystickEmulatedDirectionCodes.has(code)) {
-      joystickEmulatedDirectionCodes.delete(code);
-      return true;
-    }
-
-    return false;
+    const v = joystickTracker.getCurrentVector();
+    if (!v) return;
+    buttonGrid?.setJoystickVector(v.x, v.y);
+    layoutEditor?.setJoystickVector(v.x, v.y);
+    deviceArtworkPreview?.setJoystickVector(v.x, v.y);
   }
 
   function hydrateProfileDevices(devices: ProfileDevice[]): ProfileDevice[] {
@@ -1347,6 +1209,7 @@ export async function createApp(container: HTMLElement) {
     for (const code of pressedButtons) {
       deviceArtworkPreview.setButtonState(code, true);
     }
+    const currentJoystickVector = joystickTracker.getCurrentVector();
     if (currentJoystickVector) {
       deviceArtworkPreview.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
     }
@@ -1473,7 +1336,7 @@ export async function createApp(container: HTMLElement) {
 
       unlistenButtonState = await listen<ButtonStateEvent>("button-state", (event) => {
         const { code, pressed, device_path: devicePath, device_name: deviceName } = event.payload;
-        const suppressPhysicalHighlight = shouldTreatAsJoystickEmulated(code, pressed);
+        const suppressPhysicalHighlight = joystickTracker.shouldTreatAsEmulated(code, pressed);
         if (pressed) {
           pressedButtons.add(code);
         } else {
@@ -1506,7 +1369,7 @@ export async function createApp(container: HTMLElement) {
       });
 
       unlistenAzeronJoystickState = await listen<AzeronJoystickStateEvent>("azeron-joystick-state", (event) => {
-        updateJoystickVectorFromAzeronHid(event.payload);
+        joystickTracker.updateVectorFromAzeronHid(event.payload);
       });
 
       unlistenAzeronHidReport = await listen<AzeronHidReportEvent>("azeron-hid-report", (event) => {
@@ -1523,8 +1386,8 @@ export async function createApp(container: HTMLElement) {
           maximum,
           flat,
         } = event.payload;
-        recordJoystickMotion(axis, value, devicePath, deviceName);
-        updateJoystickVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
+        joystickTracker.recordMotion(axis, value, devicePath, deviceName);
+        joystickTracker.updateVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
         eventLogHandle.addAxisLogEntry(axis, value, devicePath, deviceName, minimum, maximum, flat);
       });
     } catch (e) {
@@ -1555,11 +1418,7 @@ export async function createApp(container: HTMLElement) {
     layoutEditor?.clearAll();
     deviceArtworkPreview?.clearAll();
     pressedButtons.clear();
-    joystickEmulatedDirectionCodes.clear();
-    joystickAxisValues.clear();
-    joystickAxisNormalized.clear();
-    lastJoystickMotionAt = 0;
-    currentJoystickVector = null;
+    joystickTracker.reset();
     macroStudio.setMonitoringActive(false);
     syncAuxPanels();
 
