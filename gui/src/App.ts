@@ -25,7 +25,7 @@ import {
   type DeviceArtworkPreviewHandle,
   createDeviceArtworkPreview,
 } from "./devices/artwork";
-import { G502_ARTWORK_CONFIG } from "./devices/g502";
+import { G502_ARTWORK_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
 import { XBOX_ARTWORK_CONFIG } from "./devices/xbox";
 
 interface DeviceLayout {
@@ -388,7 +388,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function isG502XDevice(device: ProfileDevice | null): boolean {
-    if (!device || device.vendor_id !== 0x046D) {
+    if (!device || device.vendor_id !== G502_VENDOR_ID) {
       return false;
     }
 
@@ -396,7 +396,7 @@ export async function createApp(container: HTMLElement) {
       .map((value) => normalizeDeviceLabel(value))
       .filter(Boolean);
 
-    return labels.some((label) => label.includes("g502 x"));
+    return labels.some((label) => label.includes(G502_MODEL_SUBSTRING));
   }
 
   function getDeviceArtworkConfig(device: ProfileDevice | null): DeviceArtworkConfig | null {

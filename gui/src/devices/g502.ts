@@ -1,6 +1,9 @@
 import logitechG502XSvgMarkup from "../assets/logitech-g502-x.svg?raw";
 import type { DeviceArtworkConfig } from "./artwork";
 
+export const VENDOR_ID = 0x046D; // Logitech
+export const MODEL_SUBSTRING = "g502 x";
+
 function sanitizeInlineSvgMarkup(markup: string): string {
   return markup
   .replace(/<\?xml[\s\S]*?\?>\s*/i, "")

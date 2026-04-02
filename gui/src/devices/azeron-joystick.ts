@@ -1,11 +1,10 @@
 import { isKeyboardJoystickDirectionCode } from "../keyboard-joystick";
+import { JOYSTICK_CENTER, JOYSTICK_SPAN } from "./azeron";
 
 const JOYSTICK_AXIS_CODES = new Set([0, 1]);
 const JOYSTICK_ACTIVITY_WINDOW_MS = 140;
 const JOYSTICK_DEFAULT_MIN = 0;
 const JOYSTICK_DEFAULT_MAX = 1023;
-const AZERON_JOYSTICK_CENTER = 512;
-const AZERON_JOYSTICK_SPAN = 512;
 
 interface DeviceInfo {
   is_azeron: boolean;
@@ -87,7 +86,7 @@ export function createJoystickTracker(options: {
   }
 
   function normalizeAzeronJoystickValue(value: number): number {
-    return Math.max(-1, Math.min(1, (value - AZERON_JOYSTICK_CENTER) / AZERON_JOYSTICK_SPAN));
+    return Math.max(-1, Math.min(1, (value - JOYSTICK_CENTER) / JOYSTICK_SPAN));
   }
 
   return {
