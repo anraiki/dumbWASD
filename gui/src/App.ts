@@ -12,10 +12,10 @@ import { showDeleteDeviceDialog } from "./device-delete-dialog";
 import { showDevicePropertiesDialog } from "./device-properties-dialog";
 import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
+import { createEventLog } from "./event-log";
 import { isKeyboardJoystickDirectionCode } from "./keyboard-joystick";
 import { createBindingPopover } from "./binding-popover";
 import {
-  getInputCodeLabel,
   getMappingTargetLabel,
   isSupportedMappingTarget,
   type MappingTarget,
@@ -341,15 +341,6 @@ export async function createApp(container: HTMLElement) {
 
   hamburgerBtn.addEventListener("click", toggleDrawer);
 
-  const REL_AXIS_NAMES: Record<number, string> = {
-    0: "ABS_X",
-    1: "ABS_Y",
-    6: "REL_HWHEEL",
-    8: "REL_WHEEL",
-    11: "REL_WHEEL_HI_RES",
-    12: "REL_HWHEEL_HI_RES",
-  };
-
   clearLogBtn.addEventListener("click", () => {
     eventLog.innerHTML = "";
   });
@@ -358,70 +349,7 @@ export async function createApp(container: HTMLElement) {
     return allDevices.find((device) => device.paths.includes(path)) ?? null;
   }
 
-  function addEventLogEntry(code: number, pressed: boolean, devicePath?: string, deviceName?: string) {
-    const name = getInputCodeLabel(code);
-    const action = pressed ? "PRESS" : "RELEASE";
-    const sourceEntry = devicePath ? findDeviceEntryByPath(devicePath) : null;
-    const sourceLabel = deviceName || sourceEntry?.name || devicePath || "Unknown device";
-    const entry = document.createElement("div");
-    entry.className = `event-entry ${pressed ? "event-press" : "event-release"}`;
-    entry.textContent = `${sourceLabel} · ${name} (${code}) ${action}`;
-    if (devicePath) {
-      entry.title = devicePath;
-    }
-    eventLog.appendChild(entry);
-    eventLog.scrollTop = eventLog.scrollHeight;
-    while (eventLog.children.length > 100) {
-      eventLog.removeChild(eventLog.firstChild!);
-    }
-  }
-
-  function addAxisLogEntry(
-    axis: number,
-    value: number,
-    devicePath?: string,
-    deviceName?: string,
-    minimum?: number,
-    maximum?: number,
-    flat?: number,
-  ) {
-    const name = REL_AXIS_NAMES[axis] || `REL_${axis}`;
-    const sourceEntry = devicePath ? findDeviceEntryByPath(devicePath) : null;
-    const sourceLabel = deviceName || sourceEntry?.name || devicePath || "Unknown device";
-    const entry = document.createElement("div");
-    entry.className = "event-entry event-axis";
-    const hasRange = typeof minimum === "number" && typeof maximum === "number" && maximum > minimum;
-    const normalized = hasRange
-      ? Math.round((((value - minimum) / (maximum - minimum)) * 2 - 1) * 100)
-      : null;
-    const flatText = typeof flat === "number" ? ` flat ${flat}` : "";
-    const rangeText = hasRange ? ` range ${minimum}..${maximum}` : "";
-    const normalizedText = normalized === null ? "" : ` norm ${normalized >= 0 ? "+" : ""}${normalized}%`;
-    entry.textContent = `${sourceLabel} · ${name} (${axis}) value ${value}${rangeText}${flatText}${normalizedText}`;
-    if (devicePath) {
-      entry.title = devicePath;
-    }
-    eventLog.appendChild(entry);
-    eventLog.scrollTop = eventLog.scrollHeight;
-    while (eventLog.children.length > 100) {
-      eventLog.removeChild(eventLog.firstChild!);
-    }
-  }
-
-  function addAzeronHidReportLogEntry(_payload: AzeronHidReportEvent) {
-    return;
-  }
-
-  function addMonitoringLogEntry(message: string) {
-    const entry = document.createElement("div");
-    entry.className = "event-entry event-axis";
-    entry.textContent = message;
-    eventLog.appendChild(entry);
-    eventLog.scrollTop = eventLog.scrollHeight;
-    while (eventLog.children.length > 100) {
-      eventLog.removeChild(eventLog.firstChild!);
-    }
-  }
+  const eventLogHandle = createEventLog(eventLog, findDeviceEntryByPath);
 
   listenAllDevicesToggle.addEventListener("change", async () => {
     listenAllDevices = listenAllDevicesToggle.checked;
@@ -1539,7 +1467,7 @@ export async function createApp(container: HTMLElement) {
       connectionIndicator.title = "Connected";
       statusEl.textContent = request.label;
       syncAuxPanels();
-      addMonitoringLogEntry(
+      eventLogHandle.addMonitoringLogEntry(
         `Monitoring · HID ${request.useAzeronHid ? "enabled" : "disabled"} · paths ${request.devicePaths.join(", ")}`
       );
 
@@ -1552,7 +1480,7 @@ export async function createApp(container: HTMLElement) {
           pressedButtons.delete(code);
         }
         if (!suppressPhysicalHighlight) {
-          addEventLogEntry(code, pressed, devicePath, deviceName);
+          eventLogHandle.addEventLogEntry(code, pressed, devicePath, deviceName);
         }
         if (!MOUSE_BUTTON_CODES.has(code)) {
           macroStudio.handleInputEvent(code, pressed);
@@ -1582,7 +1510,7 @@ export async function createApp(container: HTMLElement) {
       });
 
       unlistenAzeronHidReport = await listen<AzeronHidReportEvent>("azeron-hid-report", (event) => {
-        addAzeronHidReportLogEntry(event.payload);
+        eventLogHandle.addAzeronHidReportLogEntry(event.payload);
       });
 
       unlistenAxisState = await listen<AxisStateEvent>("axis-state", (event) => {
@@ -1597,7 +1525,7 @@ export async function createApp(container: HTMLElement) {
         } = event.payload;
         recordJoystickMotion(axis, value, devicePath, deviceName);
         updateJoystickVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
-        addAxisLogEntry(axis, value, devicePath, deviceName, minimum, maximum, flat);
+        eventLogHandle.addAxisLogEntry(axis, value, devicePath, deviceName, minimum, maximum, flat);
       });
     } catch (e) {
       connectionIndicator.className = "connection-indicator disconnected";
