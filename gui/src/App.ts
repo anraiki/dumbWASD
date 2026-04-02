@@ -23,10 +23,10 @@ import {
 import {
   type DeviceArtworkConfig,
   type DeviceArtworkPreviewHandle,
-  G502_ARTWORK_CONFIG,
-  XBOX_ARTWORK_CONFIG,
   createDeviceArtworkPreview,
-} from "./device-artwork";
+} from "./devices/artwork";
+import { G502_ARTWORK_CONFIG } from "./devices/g502";
+import { XBOX_ARTWORK_CONFIG } from "./devices/xbox";
 
 interface DeviceLayout {
   device: {
