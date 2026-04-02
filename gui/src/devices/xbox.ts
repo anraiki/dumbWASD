@@ -1,5 +1,5 @@
 import xboxSvgMarkup from "@devices/xbox/layout.svg?raw";
-import type { DeviceArtworkConfig } from "./layout";
+import type { DeviceSvgConfig } from "./layout";
 
 function sanitizeInlineSvgMarkup(markup: string): string {
   return markup
@@ -78,7 +78,7 @@ const ALIASES = new Map<string, Set<string>>([
   ["RSTICK_RIGHT", new Set(["BUTTON_RSTICK_RIGHT"])],
 ]);
 
-export const XBOX_ARTWORK_CONFIG: DeviceArtworkConfig = {
+export const XBOX_SVG_CONFIG: DeviceSvgConfig = {
   markup: INLINE_SVG,
   previewLabel: "Xbox controller preview",
   aliases: ALIASES,

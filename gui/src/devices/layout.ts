@@ -1,4 +1,4 @@
-export interface DeviceArtworkConfig {
+export interface DeviceSvgConfig {
   markup: string;
   previewLabel: string;
   aliases: Map<string, Set<string>>;
@@ -12,7 +12,7 @@ export interface DeviceArtworkConfig {
   };
 }
 
-export interface DeviceArtworkPreviewHandle {
+export interface DeviceSvgHandle {
   setButtonState(code: number, pressed: boolean): void;
   setJoystickVector(x: number, y: number): void;
   setSelected(code: number | null): void;
@@ -20,7 +20,7 @@ export interface DeviceArtworkPreviewHandle {
   destroy(): void;
 }
 
-function normalizeArtworkToken(value?: string | null): string {
+function normalizeSvgToken(value?: string | null): string {
   return (value || "")
     .trim()
     .toUpperCase()
@@ -28,13 +28,13 @@ function normalizeArtworkToken(value?: string | null): string {
     .replace(/^_+|_+$/g, "");
 }
 
-export function createDeviceArtworkPreview(
+export function createDeviceSvgPreview(
   svg: SVGElement,
-  config: DeviceArtworkConfig,
+  config: DeviceSvgConfig,
   options: {
     onButtonClick?(button: { id: number; label: string }, element: SVGElement): void;
   } = {},
-): DeviceArtworkPreviewHandle {
+): DeviceSvgHandle {
   const reverseCodes = new Map<string, number>();
   for (const [code, key] of config.buttonCodes) {
     reverseCodes.set(key, code);
@@ -53,18 +53,18 @@ export function createDeviceArtworkPreview(
       element.getAttribute("label"),
       element.getAttribute("inkscape:label"),
     ]
-      .map((value) => normalizeArtworkToken(value))
+      .map((value) => normalizeSvgToken(value))
       .filter(Boolean);
 
     for (const [key, names] of config.aliases) {
       if (tokens.some((token) => names.has(token))) {
-        element.classList.add("device-artwork-hit-target");
+        element.classList.add("device-svg-hit-target");
         targets.get(key)!.push(element);
         const code = reverseCodes.get(key);
         const label = code ? config.buttonLabels.get(code) : null;
 
         if (code && label && options.onButtonClick) {
-          element.classList.add("device-artwork-bindable");
+          element.classList.add("device-svg-bindable");
           element.setAttribute("tabindex", "0");
           element.setAttribute("role", "button");
           element.setAttribute("aria-label", `Configure ${label} (${code})`);
@@ -169,8 +169,8 @@ export function createDeviceArtworkPreview(
           element.classList.remove(
             "active",
             "selected",
-            "device-artwork-hit-target",
-            "device-artwork-bindable",
+            "device-svg-hit-target",
+            "device-svg-bindable",
           );
           element.removeAttribute("tabindex");
           element.removeAttribute("role");

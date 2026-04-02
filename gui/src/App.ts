@@ -21,12 +21,12 @@ import {
   type MappingTarget,
 } from "./input-codes";
 import {
-  type DeviceArtworkConfig,
-  type DeviceArtworkPreviewHandle,
-  createDeviceArtworkPreview,
+  type DeviceSvgConfig,
+  type DeviceSvgHandle,
+  createDeviceSvgPreview,
 } from "./devices/layout";
-import { G502_ARTWORK_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
-import { XBOX_ARTWORK_CONFIG } from "./devices/xbox";
+import { G502_SVG_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
+import { XBOX_SVG_CONFIG } from "./devices/xbox";
 
 interface DeviceLayout {
   device: {
@@ -359,7 +359,7 @@ export async function createApp(container: HTMLElement) {
   let monitoring = false;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
-  let deviceArtworkPreview: DeviceArtworkPreviewHandle | null = null;
+  let deviceSvgPreview: DeviceSvgHandle | null = null;
   let unlistenButtonState: (() => void) | null = null;
   let unlistenAxisState: (() => void) | null = null;
   let unlistenAzeronJoystickState: (() => void) | null = null;
@@ -399,17 +399,17 @@ export async function createApp(container: HTMLElement) {
     return labels.some((label) => label.includes(G502_MODEL_SUBSTRING));
   }
 
-  function getDeviceArtworkConfig(device: ProfileDevice | null): DeviceArtworkConfig | null {
+  function getDeviceSvgConfig(device: ProfileDevice | null): DeviceSvgConfig | null {
     if (!device) {
       return null;
     }
 
     if (isG502XDevice(device)) {
-      return G502_ARTWORK_CONFIG;
+      return G502_SVG_CONFIG;
     }
 
     if (device.device_kind === "gamepad") {
-      return XBOX_ARTWORK_CONFIG;
+      return XBOX_SVG_CONFIG;
     }
 
     return null;
@@ -478,7 +478,7 @@ export async function createApp(container: HTMLElement) {
     onVectorChange: (x, y) => {
       buttonGrid?.setJoystickVector(x, y);
       layoutEditor?.setJoystickVector(x, y);
-      deviceArtworkPreview?.setJoystickVector(x, y);
+      deviceSvgPreview?.setJoystickVector(x, y);
     },
   });
 
@@ -487,7 +487,7 @@ export async function createApp(container: HTMLElement) {
     if (!v) return;
     buttonGrid?.setJoystickVector(v.x, v.y);
     layoutEditor?.setJoystickVector(v.x, v.y);
-    deviceArtworkPreview?.setJoystickVector(v.x, v.y);
+    deviceSvgPreview?.setJoystickVector(v.x, v.y);
   }
 
   function hydrateProfileDevices(devices: ProfileDevice[]): ProfileDevice[] {
@@ -515,7 +515,7 @@ export async function createApp(container: HTMLElement) {
 
   function clearSelectedButtonBindingState() {
     buttonGrid?.setSelected(null);
-    deviceArtworkPreview?.setSelected(null);
+    deviceSvgPreview?.setSelected(null);
   }
 
   function closeBindingPopover() {
@@ -589,7 +589,7 @@ export async function createApp(container: HTMLElement) {
 
     const currentBinding = getLegacyButtonMapping(button.id);
     buttonGrid?.setSelected(button.id);
-    deviceArtworkPreview?.setSelected(button.id);
+    deviceSvgPreview?.setSelected(button.id);
     bindingPopover.open({
       anchorEl: element,
       button: { code: button.id, label: button.label },
@@ -1170,48 +1170,48 @@ export async function createApp(container: HTMLElement) {
     });
   }
 
-  function renderDeviceArtworkPreview() {
-    deviceArtworkPreview?.destroy();
-    deviceArtworkPreview = null;
+  function renderDeviceSvgPreview() {
+    deviceSvgPreview?.destroy();
+    deviceSvgPreview = null;
 
-    const artwork = getDeviceArtworkConfig(selectedDeviceInBar);
-    if (!artwork) {
+    const svgConfig = getDeviceSvgConfig(selectedDeviceInBar);
+    if (!svgConfig) {
       gridContainer.innerHTML = "";
       return;
     }
 
     gridContainer.innerHTML = `
-      <section class="device-artwork-preview" aria-label="${artwork.previewLabel}"></section>
+      <section class="device-svg-preview" aria-label="${svgConfig.previewLabel}"></section>
     `;
 
-    const frame = gridContainer.querySelector<HTMLElement>(".device-artwork-preview");
+    const frame = gridContainer.querySelector<HTMLElement>(".device-svg-preview");
     if (!frame) {
       return;
     }
 
-    frame.innerHTML = artwork.markup;
+    frame.innerHTML = svgConfig.markup;
 
     const svg = frame.querySelector<SVGElement>("svg");
     if (!svg) {
       return;
     }
 
-    svg.classList.add("device-artwork-svg");
+    svg.classList.add("device-svg");
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("focusable", "false");
 
-    deviceArtworkPreview = createDeviceArtworkPreview(svg, artwork, {
+    deviceSvgPreview = createDeviceSvgPreview(svg, svgConfig, {
       onButtonClick(button, element) {
         openBindingPopoverForButton(button, element);
       },
     });
-    deviceArtworkPreview.clearAll();
+    deviceSvgPreview.clearAll();
     for (const code of pressedButtons) {
-      deviceArtworkPreview.setButtonState(code, true);
+      deviceSvgPreview.setButtonState(code, true);
     }
     const currentJoystickVector = joystickTracker.getCurrentVector();
     if (currentJoystickVector) {
-      deviceArtworkPreview.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
+      deviceSvgPreview.setJoystickVector(currentJoystickVector.x, currentJoystickVector.y);
     }
   }
 
@@ -1220,8 +1220,8 @@ export async function createApp(container: HTMLElement) {
     syncAuxPanels();
 
     if (isMacroMode) {
-      deviceArtworkPreview?.destroy();
-      deviceArtworkPreview = null;
+      deviceSvgPreview?.destroy();
+      deviceSvgPreview = null;
       if (layoutEditor) {
         try { layoutEditor.destroy(); } catch (_) {}
         layoutEditor = null;
@@ -1245,12 +1245,12 @@ export async function createApp(container: HTMLElement) {
       }
       buttonGrid?.destroy();
       buttonGrid = null;
-      renderDeviceArtworkPreview();
+      renderDeviceSvgPreview();
       return;
     }
 
-    deviceArtworkPreview?.destroy();
-    deviceArtworkPreview = null;
+    deviceSvgPreview?.destroy();
+    deviceSvgPreview = null;
 
     if (isEditMode) {
       renderEditMode();
@@ -1359,7 +1359,7 @@ export async function createApp(container: HTMLElement) {
             suppressPhysical: suppressPhysicalHighlight,
           });
         }
-        deviceArtworkPreview?.setButtonState(code, pressed);
+        deviceSvgPreview?.setButtonState(code, pressed);
 
         if (!runtimeRemapActive) {
           void emitLegacyButtonMapping(code, pressed).catch((error) => {
@@ -1416,7 +1416,7 @@ export async function createApp(container: HTMLElement) {
     reconnectBtn.style.display = "none";
     buttonGrid?.clearAll();
     layoutEditor?.clearAll();
-    deviceArtworkPreview?.clearAll();
+    deviceSvgPreview?.clearAll();
     pressedButtons.clear();
     joystickTracker.reset();
     macroStudio.setMonitoringActive(false);

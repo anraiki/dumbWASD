@@ -1,5 +1,5 @@
 import logitechG502XSvgMarkup from "@devices/g502/layout.svg?raw";
-import type { DeviceArtworkConfig } from "./layout";
+import type { DeviceSvgConfig } from "./layout";
 
 export const VENDOR_ID = 0x046D; // Logitech
 export const MODEL_SUBSTRING = "g502 x";
@@ -28,7 +28,7 @@ const ALIASES = new Map<string, Set<string>>([
   ["RMB", new Set(["RMB", "BUTTON_RMB", "RIGHT", "BUTTON_RIGHT", "MOUSE_RIGHT"])],
 ]);
 
-export const G502_ARTWORK_CONFIG: DeviceArtworkConfig = {
+export const G502_SVG_CONFIG: DeviceSvgConfig = {
   markup: INLINE_SVG,
   previewLabel: "Logitech G502 X preview",
   aliases: ALIASES,

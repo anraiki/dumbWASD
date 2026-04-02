@@ -519,7 +519,7 @@ html, body {
   overflow: hidden;
 }
 
-.device-artwork-preview {
+.device-svg-preview {
   width: min(760px, calc(100% - 48px));
   height: min(560px, calc(100% - 48px));
   display: flex;
@@ -530,7 +530,7 @@ html, body {
   -webkit-user-select: none;
 }
 
-.device-artwork-svg {
+.device-svg {
   width: min(100%, 520px);
   min-height: 500px;
   max-height: 100%;
@@ -538,28 +538,28 @@ html, body {
   -webkit-user-select: none;
 }
 
-.device-artwork-hit-target {
+.device-svg-hit-target {
   fill: transparent !important;
   fill-opacity: 1 !important;
   pointer-events: all;
   transition: none;
 }
 
-.device-artwork-bindable {
+.device-svg-bindable {
   cursor: pointer;
   pointer-events: auto;
   outline: none;
 }
 
-.device-artwork-bindable:hover,
-.device-artwork-bindable:focus-visible,
-.device-artwork-hit-target.selected {
+.device-svg-bindable:hover,
+.device-svg-bindable:focus-visible,
+.device-svg-hit-target.selected {
   fill: rgba(241, 212, 128, 0.52) !important;
   fill-opacity: 1 !important;
   filter: drop-shadow(0 0 12px rgba(241, 212, 128, 0.28));
 }
 
-.device-artwork-hit-target.active {
+.device-svg-hit-target.active {
   fill: rgba(77, 166, 255, 0.82) !important;
   fill-opacity: 1 !important;
   stroke: rgba(205, 233, 255, 0.7) !important;
