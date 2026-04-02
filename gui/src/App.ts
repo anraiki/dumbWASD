@@ -15,11 +15,8 @@ import { createEventLog } from "./event-log";
 import { createMonitor, type MonitorHandle } from "./monitoring/monitor";
 import { createJoystickTracker } from "@devices/azeron/joystick";
 import { createBindingPopover } from "./binding-popover";
-import {
-  getMappingTargetLabel,
-  isSupportedMappingTarget,
-  type MappingTarget,
-} from "./input-codes";
+import { createLegacyBinder, type LegacyBinderHandle } from "./binder/legacy";
+import { createBindingPopoverController, type BindingPopoverController } from "./binder/popover";
 import {
   type DeviceSvgConfig,
   type DeviceSvgHandle,
@@ -28,7 +25,6 @@ import {
 import { G502_SVG_CONFIG, VENDOR_ID as G502_VENDOR_ID, MODEL_SUBSTRING as G502_MODEL_SUBSTRING } from "./devices/g502";
 import { XBOX_SVG_CONFIG } from "./devices/xbox";
 import {
-  type Profile,
   type ProfileManagerHandle,
   normalizeDeviceLabel,
   createProfileManager,
@@ -286,6 +282,8 @@ export async function createApp(container: HTMLElement) {
   // ── State ──
   let profileManager!: ProfileManagerHandle;
   let monitor!: MonitorHandle;
+  let legacyBinder!: LegacyBinderHandle;
+  let bindingController!: BindingPopoverController;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
   let deviceSvgPreview: DeviceSvgHandle | null = null;
@@ -337,102 +335,6 @@ export async function createApp(container: HTMLElement) {
     buttonGrid?.setJoystickVector(v.x, v.y);
     layoutEditor?.setJoystickVector(v.x, v.y);
     deviceSvgPreview?.setJoystickVector(v.x, v.y);
-  }
-
-  function clearSelectedButtonBindingState() {
-    buttonGrid?.setSelected(null);
-    deviceSvgPreview?.setSelected(null);
-  }
-
-  function closeBindingPopover() {
-    bindingPopover.close();
-    clearSelectedButtonBindingState();
-  }
-
-  function getLegacyButtonMapping(code: number): MappingTarget | null {
-    const currentProfile = profileManager.getCurrentProfile();
-    if (!currentProfile) {
-      return null;
-    }
-
-    const match = currentProfile.mappings.find((mapping) =>
-      mapping.from === code && isSupportedMappingTarget(mapping.to)
-    );
-
-    return match ? { ...match.to } : null;
-  }
-
-  async function emitLegacyButtonMapping(code: number, pressed: boolean) {
-    const mapping = getLegacyButtonMapping(code);
-    if (!mapping) {
-      return;
-    }
-
-    await invoke("emit_output_target", {
-      target: mapping,
-      pressed,
-    });
-  }
-
-  async function persistLegacyButtonMapping(code: number, nextTarget: MappingTarget | null) {
-    const currentProfile = profileManager.getCurrentProfile();
-    const currentProfileName = profileManager.getCurrentProfileName();
-    if (!currentProfile || !currentProfileName) {
-      throw new Error("Select a profile first");
-    }
-
-    const nextMappings = currentProfile.mappings.filter((mapping) => mapping.from !== code);
-    if (nextTarget) {
-      nextMappings.push({
-        from: code,
-        to: { ...nextTarget },
-      });
-    }
-
-    const nextProfile: Profile = {
-      ...currentProfile,
-      mappings: nextMappings,
-    };
-
-    await invoke("save_profile", {
-      name: currentProfileName,
-      profile: nextProfile,
-    });
-
-    profileManager.updateProfile(nextProfile);
-    await monitor.syncScope(true);
-  }
-
-  function openBindingPopoverForButton(
-    button: { id: number; label: string },
-    element: Element,
-  ) {
-    if (!profileManager.getCurrentProfile() || !profileManager.getCurrentProfileName() || isEditMode || isMacroMode) {
-      return;
-    }
-
-    if (bindingPopover.isOpenFor(button.id)) {
-      closeBindingPopover();
-      return;
-    }
-
-    const currentBinding = getLegacyButtonMapping(button.id);
-    buttonGrid?.setSelected(button.id);
-    deviceSvgPreview?.setSelected(button.id);
-    bindingPopover.open({
-      anchorEl: element,
-      button: { code: button.id, label: button.label },
-      currentBinding,
-      onClose: clearSelectedButtonBindingState,
-      onSave: async (nextBinding) => {
-        await persistLegacyButtonMapping(button.id, nextBinding);
-        statusEl.textContent = `${button.label} mapped to ${getMappingTargetLabel(nextBinding)}`;
-      },
-      onReset: async () => {
-        await persistLegacyButtonMapping(button.id, null);
-        statusEl.textContent = `${button.label} mapping cleared`;
-      },
-    });
   }
 
   async function showDeviceProperties(device: ProfileDevice) {
@@ -639,6 +541,12 @@ export async function createApp(container: HTMLElement) {
     syncMonitoringScope: (force) => monitor.syncScope(force),
   });
 
+  legacyBinder = createLegacyBinder({
+    profileManager,
+    onProfileUpdate: (profile) => profileManager.updateProfile(profile),
+    syncMonitoringScope: () => monitor.syncScope(true),
+  });
+
   // joystickTracker (moved here — depends on profileManager)
   const joystickTracker = createJoystickTracker({
     isSelectedAzeron: () => profileManager.getSelectedDevice()?.device_kind === "azeron",
@@ -670,8 +578,21 @@ export async function createApp(container: HTMLElement) {
     getButtonGrid: () => buttonGrid,
     getLayoutEditor: () => layoutEditor,
     getDeviceSvgPreview: () => deviceSvgPreview,
-    emitLegacyButtonMapping,
+    emitLegacyButtonMapping: (code, pressed) => legacyBinder.emit(code, pressed),
     syncAuxPanels,
+  });
+
+  bindingController = createBindingPopoverController({
+    popover: bindingPopover,
+    legacyBinder,
+    statusEl,
+    getIsEditMode: () => isEditMode,
+    getIsMacroMode: () => isMacroMode,
+    getHasProfile: () => !!profileManager.getCurrentProfile() && !!profileManager.getCurrentProfileName(),
+    onSelectionChange: (code) => {
+      buttonGrid?.setSelected(code);
+      deviceSvgPreview?.setSelected(code);
+    },
   });
 
   function renderViewMode() {
@@ -689,7 +610,7 @@ export async function createApp(container: HTMLElement) {
     gridContainer.innerHTML = "";
     buttonGrid = createButtonGrid(gridContainer, currentLayout, {
       onButtonClick(button, element) {
-        openBindingPopoverForButton(button, element);
+        bindingController.open(button, element);
       },
     });
     buttonGrid.clearAll();
@@ -766,7 +687,7 @@ export async function createApp(container: HTMLElement) {
 
     deviceSvgPreview = createDeviceSvgPreview(svg, svgConfig, {
       onButtonClick(button, element) {
-        openBindingPopoverForButton(button, element);
+        bindingController.open(button, element);
       },
     });
     deviceSvgPreview.clearAll();
@@ -780,7 +701,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function renderWorkspace() {
-    closeBindingPopover();
+    bindingController.close();
     syncAuxPanels();
 
     if (isMacroMode) {
