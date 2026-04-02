@@ -26,10 +26,9 @@ export interface AppState {
   setCloseDeviceContextMenu(fn: (() => void) | null): void;
 
   // ── Startup data ──
+  initialize(data: { allDevices: DeviceEntry[]; layouts: string[] }): void;
   allDevices: DeviceEntry[];
-  setAllDevices(devices: DeviceEntry[]): void;
   layouts: string[];
-  setLayouts(layouts: string[]): void;
 
   // ── Shared collections ──
   pressedButtons: Set<number>;
@@ -74,11 +73,9 @@ export function createAppState(): AppState {
     getCloseDeviceContextMenu: () => closeDeviceContextMenu,
     setCloseDeviceContextMenu: (fn) => { closeDeviceContextMenu = fn; },
 
+    initialize: (data) => { allDevices = data.allDevices; layouts = data.layouts; },
     get allDevices() { return allDevices; },
-    setAllDevices: (devices) => { allDevices = devices; },
-
     get layouts() { return layouts; },
-    setLayouts: (list) => { layouts = list; },
 
     pressedButtons,
   };

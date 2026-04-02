@@ -73,9 +73,7 @@ export async function createApp(container: HTMLElement) {
   let workspace!: WorkspaceHandle;
 
   const state = createAppState();
-  const { allDevices, layouts } = await loadStartupData(statusEl);
-  state.setAllDevices(allDevices);
-  state.setLayouts(layouts);
+  state.initialize(await loadStartupData(statusEl));
 
   function findDeviceEntryByPath(path: string): DeviceEntry | null {
     return state.allDevices.find((device) => device.paths.includes(path)) ?? null;
