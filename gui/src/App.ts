@@ -12,6 +12,7 @@ import { createBindingPopoverController, type BindingPopoverController } from ".
 import { createWorkspace, type WorkspaceHandle } from "./workspace/workspace";
 import { type ProfileManagerHandle, createProfileManager } from "./profile-manager";
 import { createAppState } from "./store/app-state";
+import { initStore } from "./init";
 import { setupWindowChrome } from "./components/app/window-chrome";
 import { createDeviceBarController } from "./components/app/device-bar-controller";
 import { setupModeControls, type ModeControlsHandle } from "./components/app/mode-controls";
@@ -71,17 +72,11 @@ export async function createApp(container: HTMLElement) {
   let bindingController!: BindingPopoverController;
   let workspace!: WorkspaceHandle;
 
-  let allDevices: DeviceEntry[] = [];
-  try {
-    allDevices = await invoke<DeviceEntry[]>("list_devices");
-  } catch (e) {
-    statusEl.textContent = `Error loading devices: ${e}`;
-  }
-
-  const state = createAppState(allDevices);
+  const state = createAppState();
+  await initStore(state, statusEl);
 
   function findDeviceEntryByPath(path: string): DeviceEntry | null {
-    return allDevices.find((device) => device.paths.includes(path)) ?? null;
+    return state.allDevices.find((device) => device.paths.includes(path)) ?? null;
   }
 
   const eventLogHandle = createEventLog(eventLog, findDeviceEntryByPath);
@@ -125,14 +120,6 @@ export async function createApp(container: HTMLElement) {
     getCloseDeviceContextMenu: state.getCloseDeviceContextMenu,
     setCloseDeviceContextMenu: state.setCloseDeviceContextMenu,
   });
-
-  // ── Layout layouts list ──
-  let layouts: string[] = [];
-  try {
-    layouts = await invoke<string[]>("list_layouts");
-  } catch (e) {
-    statusEl.textContent = `Error loading layouts: ${e}`;
-  }
 
   // ── Profile manager ──
   profileManager = createProfileManager({
@@ -240,7 +227,7 @@ export async function createApp(container: HTMLElement) {
     macroBtn,
     reconnectBtn,
     layoutSelectorEl,
-    layouts,
+    layouts: state.layouts,
     statusEl,
     getIsEditMode: state.getIsEditMode,
     setIsEditMode: state.setIsEditMode,

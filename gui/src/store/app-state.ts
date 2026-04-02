@@ -25,12 +25,17 @@ export interface AppState {
   getCloseDeviceContextMenu(): (() => void) | null;
   setCloseDeviceContextMenu(fn: (() => void) | null): void;
 
+  // ── Startup data ──
+  allDevices: DeviceEntry[];
+  setAllDevices(devices: DeviceEntry[]): void;
+  layouts: string[];
+  setLayouts(layouts: string[]): void;
+
   // ── Shared collections ──
   pressedButtons: Set<number>;
-  allDevices: DeviceEntry[];
 }
 
-export function createAppState(allDevices: DeviceEntry[]): AppState {
+export function createAppState(): AppState {
   let isEditMode = false;
   let isMacroMode = false;
   let listenAllDevices = false;
@@ -39,6 +44,8 @@ export function createAppState(allDevices: DeviceEntry[]): AppState {
   let deviceSvgPreview: DeviceSvgHandle | null = null;
   let closeDeviceContextMenu: (() => void) | null = null;
   const pressedButtons = new Set<number>();
+  let allDevices: DeviceEntry[] = [];
+  let layouts: string[] = [];
 
   return {
     getIsEditMode: () => isEditMode,
@@ -67,7 +74,12 @@ export function createAppState(allDevices: DeviceEntry[]): AppState {
     getCloseDeviceContextMenu: () => closeDeviceContextMenu,
     setCloseDeviceContextMenu: (fn) => { closeDeviceContextMenu = fn; },
 
+    get allDevices() { return allDevices; },
+    setAllDevices: (devices) => { allDevices = devices; },
+
+    get layouts() { return layouts; },
+    setLayouts: (list) => { layouts = list; },
+
     pressedButtons,
-    allDevices,
   };
 }
