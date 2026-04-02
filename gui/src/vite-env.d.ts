@@ -10,7 +10,3 @@ declare module "*.svg?raw" {
   const src: string;
   export default src;
 }
-declare module "*.toml" {
-  const value: Record<string, unknown>;
-  export default value;
-}

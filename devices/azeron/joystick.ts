@@ -1,4 +1,4 @@
-import config from "./config.toml";
+import config from "./config";
 
 const { center: JOYSTICK_CENTER, span: JOYSTICK_SPAN, keyboard_direction_codes } =
   (config as { joystick: { center: number; span: number; keyboard_direction_codes: number[] } }).joystick;
