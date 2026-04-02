@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createDeviceSelector } from "./device-selector";
 import { createButtonGrid, type ButtonGrid } from "./button-grid";
@@ -13,6 +12,7 @@ import { showDevicePropertiesDialog } from "./device-properties-dialog";
 import { showUnsavedLayoutDialog } from "./layout-unsaved-dialog";
 import { createMacroStudio } from "./macro-studio";
 import { createEventLog } from "./event-log";
+import { createMonitor, type MonitorHandle } from "./monitoring/monitor";
 import { createJoystickTracker } from "@devices/azeron/joystick";
 import { createBindingPopover } from "./binding-popover";
 import {
@@ -34,52 +34,10 @@ import {
   createProfileManager,
 } from "./profile-manager";
 
-interface ButtonStateEvent {
-  code: number;
-  pressed: boolean;
-  device_path: string;
-  device_name: string;
-}
-
-interface AxisStateEvent {
-  axis: number;
-  value: number;
-  device_path: string;
-  device_name: string;
-  minimum?: number;
-  maximum?: number;
-  flat?: number;
-}
-
-interface AzeronJoystickStateEvent {
-  x: number;
-  y: number;
-  raw_x: number;
-  raw_y: number;
-  source: string;
-}
-
-interface AzeronHidReportEvent {
-  length: number;
-  hex: string;
-  ascii?: string | null;
-  parsed_source?: string | null;
-}
-
-interface MonitoringRequest {
-  devicePaths: string[];
-  label: string;
-  useAzeronHid: boolean;
-  legacyMappings: Profile["mappings"];
-  suppressMappedInputs: boolean;
-}
-
 interface DeviceRegistryToml {
   path: string;
   content: string;
 }
-
-const MOUSE_BUTTON_CODES = new Set([272, 273, 274, 275, 276]);
 
 export async function createApp(container: HTMLElement) {
   const appWindow = getCurrentWindow();
@@ -322,24 +280,18 @@ export async function createApp(container: HTMLElement) {
 
   listenAllDevicesToggle.addEventListener("change", async () => {
     listenAllDevices = listenAllDevicesToggle.checked;
-    await syncMonitoringScope(true);
+    await monitor.syncScope(true);
   });
 
   // ── State ──
   let profileManager!: ProfileManagerHandle;
-  let monitoring = false;
+  let monitor!: MonitorHandle;
   let buttonGrid: ButtonGrid | null = null;
   let layoutEditor: LayoutEditorHandle | null = null;
   let deviceSvgPreview: DeviceSvgHandle | null = null;
-  let unlistenButtonState: (() => void) | null = null;
-  let unlistenAxisState: (() => void) | null = null;
-  let unlistenAzeronJoystickState: (() => void) | null = null;
-  let unlistenAzeronHidReport: (() => void) | null = null;
   let isEditMode = false;
   let isMacroMode = false;
   let listenAllDevices = false;
-  let monitoredPathsKey = "";
-  let runtimeRemapActive = false;
   let closeDeviceContextMenu: (() => void) | null = null;
   const pressedButtons = new Set<number>();
   // Cache system devices at startup
@@ -448,7 +400,7 @@ export async function createApp(container: HTMLElement) {
     });
 
     profileManager.updateProfile(nextProfile);
-    await syncMonitoringScope(true);
+    await monitor.syncScope(true);
   }
 
   function openBindingPopoverForButton(
@@ -540,106 +492,6 @@ export async function createApp(container: HTMLElement) {
     }
 
     return true;
-  }
-
-  function getAllMonitoredPaths(): string[] {
-    return [...new Set(allDevices.flatMap((device) => device.paths))];
-  }
-
-  function shouldSuppressMappedInputs(): boolean {
-    const selectedDevice = profileManager.getSelectedDevice();
-    const currentProfile = profileManager.getCurrentProfile();
-    if (isMacroMode || listenAllDevices || !selectedDevice || !currentProfile?.mappings.length) {
-      return false;
-    }
-
-    return selectedDevice.device_kind === "mouse" || selectedDevice.device_kind === "keyboard";
-  }
-
-  function buildMonitoringRequest(): MonitoringRequest | null {
-    const currentProfile = profileManager.getCurrentProfile();
-    const selectedDevice = profileManager.getSelectedDevice();
-    const legacyMappings = currentProfile?.mappings ?? [];
-    const suppressMappedInputs = shouldSuppressMappedInputs();
-
-    if (isMacroMode) {
-      const keyboardPaths = allDevices
-        .filter((device) => device.has_keyboard)
-        .flatMap((device) => device.paths);
-
-      const curatedPaths = currentProfile
-        ? currentProfile.devices.flatMap((device) => {
-            const entry = profileManager.findSystemEntry(device);
-            return entry ? entry.paths : [];
-          })
-        : [];
-
-      const devicePaths = [...new Set([...keyboardPaths, ...curatedPaths])];
-      if (devicePaths.length === 0) return null;
-
-      return {
-        devicePaths,
-        label: "Keyboards + curated gamepads",
-        useAzeronHid: selectedDevice?.device_kind === "azeron",
-        legacyMappings,
-        suppressMappedInputs: false,
-      };
-    }
-
-    if (listenAllDevices) {
-      const devicePaths = getAllMonitoredPaths();
-      if (devicePaths.length === 0) return null;
-
-      return {
-        devicePaths,
-        label: "All detected devices",
-        useAzeronHid: selectedDevice?.device_kind === "azeron",
-        legacyMappings,
-        suppressMappedInputs: false,
-      };
-    }
-
-    if (!selectedDevice) return null;
-
-    const entry = profileManager.findSystemEntry(selectedDevice);
-    if (!entry) return null;
-
-    return {
-      devicePaths: entry.paths,
-      label: entry.name,
-      useAzeronHid: entry.is_azeron || selectedDevice.device_kind === "azeron",
-      legacyMappings,
-      suppressMappedInputs,
-    };
-  }
-
-  async function syncMonitoringScope(force = false) {
-    const request = buildMonitoringRequest();
-    const nextKey = request ? [...request.devicePaths].sort().join("|") : "";
-
-    if (!request) {
-      if (monitoring) {
-        await stopMonitoring();
-      } else {
-        monitoredPathsKey = "";
-        runtimeRemapActive = false;
-        macroStudio.setMonitoringActive(false);
-        syncAuxPanels();
-      }
-      return;
-    }
-
-    if (!force && monitoring && nextKey === monitoredPathsKey) {
-      macroStudio.setMonitoringActive(true);
-      syncAuxPanels();
-      return;
-    }
-
-    if (monitoring) {
-      await stopMonitoring();
-    }
-
-    await startMonitoringRequest(request);
   }
 
   // ── Profile Drawer ──
@@ -767,7 +619,7 @@ export async function createApp(container: HTMLElement) {
     layoutSelectorEl,
     profileDrawer,
     deviceBar,
-    getMonitoring: () => monitoring,
+    getMonitoring: () => monitor.isActive(),
     getIsMacroMode: () => isMacroMode,
     getButtonGrid: () => buttonGrid,
     setButtonGrid: (grid) => { buttonGrid = grid; },
@@ -781,10 +633,10 @@ export async function createApp(container: HTMLElement) {
     getCloseDeviceContextMenu: () => closeDeviceContextMenu,
     clearCloseDeviceContextMenu: () => { closeDeviceContextMenu = null; },
     confirmExitEditModeIfDirty,
-    stopMonitoring,
+    stopMonitoring: () => monitor.stop(),
     renderWorkspace,
     syncAuxPanels,
-    syncMonitoringScope,
+    syncMonitoringScope: (force) => monitor.syncScope(force),
   });
 
   // joystickTracker (moved here — depends on profileManager)
@@ -801,6 +653,25 @@ export async function createApp(container: HTMLElement) {
       layoutEditor?.setJoystickVector(x, y);
       deviceSvgPreview?.setJoystickVector(x, y);
     },
+  });
+
+  monitor = createMonitor({
+    allDevices,
+    profileManager,
+    getIsMacroMode: () => isMacroMode,
+    getListenAllDevices: () => listenAllDevices,
+    statusEl,
+    connectionIndicator,
+    reconnectBtn,
+    macroStudio,
+    joystickTracker,
+    eventLogHandle,
+    pressedButtons,
+    getButtonGrid: () => buttonGrid,
+    getLayoutEditor: () => layoutEditor,
+    getDeviceSvgPreview: () => deviceSvgPreview,
+    emitLegacyButtonMapping,
+    syncAuxPanels,
   });
 
   function renderViewMode() {
@@ -924,7 +795,7 @@ export async function createApp(container: HTMLElement) {
       gridContainer.innerHTML = "";
       gridContainer.classList.add("macro-workspace-host");
       macroStudio.mount(gridContainer);
-      macroStudio.setMonitoringActive(monitoring);
+      macroStudio.setMonitoringActive(monitor.isActive());
       return;
     }
 
@@ -953,7 +824,7 @@ export async function createApp(container: HTMLElement) {
   }
 
   function syncAuxPanels() {
-    eventLogContainer.style.display = monitoring && !isMacroMode ? "flex" : "none";
+    eventLogContainer.style.display = monitor.isActive() && !isMacroMode ? "flex" : "none";
     actionBar.style.display = isMacroMode ? "none" : "flex";
     toggleModeBtn.disabled = isMacroMode;
     listenAllDevicesToggle.disabled = isMacroMode;
@@ -987,7 +858,7 @@ export async function createApp(container: HTMLElement) {
     isMacroMode = !isMacroMode;
     macroBtn.classList.toggle("active", isMacroMode);
     renderWorkspace();
-    await syncMonitoringScope(true);
+    await monitor.syncScope(true);
     const currentLayout = profileManager.getCurrentLayout();
     statusEl.textContent = isMacroMode
       ? "Macro Studio ready. Recording listens across all connected profile keyboards/gamepads."
@@ -997,134 +868,8 @@ export async function createApp(container: HTMLElement) {
   });
 
   reconnectBtn.addEventListener("click", async () => {
-    await syncMonitoringScope(true);
+    await monitor.syncScope(true);
   });
-
-  // ── Monitoring ──
-
-  async function startMonitoringRequest(request: MonitoringRequest) {
-    try {
-      connectionIndicator.className = "connection-indicator connecting";
-      connectionIndicator.title = "Connecting...";
-      statusEl.textContent = "Connecting...";
-
-      await invoke("start_monitoring", {
-        devicePaths: request.devicePaths,
-        useAzeronHid: request.useAzeronHid,
-        legacyMappings: request.legacyMappings,
-        suppressMappedInputs: request.suppressMappedInputs,
-      });
-      monitoring = true;
-      runtimeRemapActive = request.suppressMappedInputs;
-      monitoredPathsKey = [...request.devicePaths].sort().join("|");
-      reconnectBtn.style.display = "none";
-      macroStudio.setMonitoringActive(true);
-
-      connectionIndicator.className = "connection-indicator connected";
-      connectionIndicator.title = "Connected";
-      statusEl.textContent = request.label;
-      syncAuxPanels();
-      eventLogHandle.addMonitoringLogEntry(
-        `Monitoring · HID ${request.useAzeronHid ? "enabled" : "disabled"} · paths ${request.devicePaths.join(", ")}`
-      );
-
-      unlistenButtonState = await listen<ButtonStateEvent>("button-state", (event) => {
-        const { code, pressed, device_path: devicePath, device_name: deviceName } = event.payload;
-        const suppressPhysicalHighlight = joystickTracker.shouldTreatAsEmulated(code, pressed);
-        if (pressed) {
-          pressedButtons.add(code);
-        } else {
-          pressedButtons.delete(code);
-        }
-        if (!suppressPhysicalHighlight) {
-          eventLogHandle.addEventLogEntry(code, pressed, devicePath, deviceName);
-        }
-        if (!MOUSE_BUTTON_CODES.has(code)) {
-          macroStudio.handleInputEvent(code, pressed);
-        }
-
-        if (buttonGrid) {
-          buttonGrid.setButtonState(code, pressed, {
-            suppressPhysical: suppressPhysicalHighlight,
-          });
-        }
-        if (layoutEditor) {
-          layoutEditor.setButtonState(code, pressed, {
-            suppressPhysical: suppressPhysicalHighlight,
-          });
-        }
-        deviceSvgPreview?.setButtonState(code, pressed);
-
-        if (!runtimeRemapActive) {
-          void emitLegacyButtonMapping(code, pressed).catch((error) => {
-            statusEl.textContent = `Error applying mapping: ${error}`;
-          });
-        }
-      });
-
-      unlistenAzeronJoystickState = await listen<AzeronJoystickStateEvent>("azeron-joystick-state", (event) => {
-        joystickTracker.updateVectorFromAzeronHid(event.payload);
-      });
-
-      unlistenAzeronHidReport = await listen<AzeronHidReportEvent>("azeron-hid-report", (event) => {
-        eventLogHandle.addAzeronHidReportLogEntry(event.payload);
-      });
-
-      unlistenAxisState = await listen<AxisStateEvent>("axis-state", (event) => {
-        const {
-          axis,
-          value,
-          device_path: devicePath,
-          device_name: deviceName,
-          minimum,
-          maximum,
-          flat,
-        } = event.payload;
-        joystickTracker.recordMotion(axis, value, devicePath, deviceName);
-        joystickTracker.updateVector(axis, value, devicePath, deviceName, minimum, maximum, flat);
-        eventLogHandle.addAxisLogEntry(axis, value, devicePath, deviceName, minimum, maximum, flat);
-      });
-    } catch (e) {
-      connectionIndicator.className = "connection-indicator disconnected";
-      connectionIndicator.title = "Disconnected";
-      statusEl.textContent = `Connection error: ${e}`;
-      reconnectBtn.style.display = "inline-block";
-      monitoredPathsKey = "";
-      macroStudio.setMonitoringActive(false);
-      syncAuxPanels();
-    }
-  }
-
-  async function stopMonitoring() {
-    try {
-      await invoke("stop_monitoring");
-    } catch (_) {
-      // ignore
-    }
-
-    monitoring = false;
-    runtimeRemapActive = false;
-    monitoredPathsKey = "";
-    connectionIndicator.className = "connection-indicator disconnected";
-    connectionIndicator.title = "Disconnected";
-    reconnectBtn.style.display = "none";
-    buttonGrid?.clearAll();
-    layoutEditor?.clearAll();
-    deviceSvgPreview?.clearAll();
-    pressedButtons.clear();
-    joystickTracker.reset();
-    macroStudio.setMonitoringActive(false);
-    syncAuxPanels();
-
-    unlistenButtonState?.();
-    unlistenButtonState = null;
-    unlistenAxisState?.();
-    unlistenAxisState = null;
-    unlistenAzeronJoystickState?.();
-    unlistenAzeronJoystickState = null;
-    unlistenAzeronHidReport?.();
-    unlistenAzeronHidReport = null;
-  }
 
   // ── Startup ──
   await profileManager.refreshProfileList();
