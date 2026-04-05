@@ -485,17 +485,18 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
         selectionOnDrag={false}
       >
         <Controls />
-        <Background color="#2a2a4a" gap={16} size={1} variant={BackgroundVariant.Dots} />
+        <Background color="#303036" gap={16} size={1} variant={BackgroundVariant.Dots} />
         <Panel position="top-left" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <label style={{
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
             padding: '6px 12px',
-            background: '#252545',
+            background: '#1d1d21',
+            border: '1px solid #3a3a42',
             borderRadius: '8px',
             fontSize: '13px',
-            color: '#e0e0e0',
+            color: '#f1efe9',
             cursor: 'pointer',
             userSelect: 'none',
           }}>
@@ -517,9 +518,9 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
             }}
             style={{
               padding: '6px 12px',
-              background: '#3a3a5a',
-              color: '#fff',
-              border: 'none',
+              background: '#202024',
+              color: '#f1efe9',
+              border: '1px solid #3a3a42',
               borderRadius: '8px',
               fontSize: '13px',
               fontWeight: 600,
@@ -534,9 +535,9 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
             onClick={handleCenter}
             style={{
               padding: '8px 16px',
-              background: '#0f7dff',
-              color: '#fff',
-              border: 'none',
+              background: '#2a2a2f',
+              color: '#f1efe9',
+              border: '1px solid #3a3a42',
               borderRadius: '8px',
               fontSize: '13px',
               fontWeight: 600,
@@ -549,9 +550,9 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
             onClick={handleReset}
             style={{
               padding: '8px 16px',
-              background: '#3a3a5a',
-              color: '#fff',
-              border: 'none',
+              background: '#202024',
+              color: '#f1efe9',
+              border: '1px solid #3a3a42',
               borderRadius: '8px',
               fontSize: '13px',
               fontWeight: 600,
@@ -567,12 +568,12 @@ const LayoutEditorInner: React.FC<LayoutEditorProps> = ({
               style={{
                 padding: '8px 16px',
                 background:
-                  saveStatus === 'saving' ? '#666' :
-                  saveStatus === 'success' ? '#00dd00' :
-                  saveStatus === 'error' ? '#dd0000' :
-                  '#00aa00',
+                  saveStatus === 'saving' ? '#5a5a5f' :
+                  saveStatus === 'success' ? '#6c8a6d' :
+                  saveStatus === 'error' ? '#8e5a5a' :
+                  '#5d775d',
                 color: '#fff',
-                border: 'none',
+                border: '1px solid transparent',
                 borderRadius: '8px',
                 fontSize: '13px',
                 fontWeight: 600,
