@@ -695,7 +695,7 @@ html, body {
   gap: 14px;
   padding: 16px;
   border: 1px solid rgba(var(--accent-rgb), 0.26);
-  border-radius: 16px;
+  border-radius: 0;
   background: rgba(26, 26, 28, 0.98);
   box-shadow:
     0 28px 60px rgba(0, 0, 0, 0.45),
@@ -708,11 +708,11 @@ html, body {
   content: "";
   position: absolute;
   top: var(--binding-popover-anchor-offset);
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: rgba(32, 32, 35, 0.98);
-  border-top: 1px solid rgba(var(--accent-rgb), 0.26);
   border-left: 1px solid rgba(var(--accent-rgb), 0.26);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.26);
   transform: translateY(-50%) rotate(45deg);
 }
 
@@ -731,7 +731,7 @@ html, body {
   gap: 6px;
   padding: 12px 13px;
   border: 1px solid rgba(var(--accent-rgb), 0.12);
-  border-radius: 12px;
+  border-radius: 0;
   background: rgba(7, 8, 12, 0.28);
 }
 
@@ -767,6 +767,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-radius: 0;
 }
 
 .binding-popover-capture {
@@ -979,7 +980,7 @@ html, body {
   padding: 4px;
   background: rgba(15, 15, 17, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 0;
 }
 
 .macro-mode-btn {
@@ -1099,7 +1100,7 @@ html, body {
   padding: 4px;
   background: rgba(15, 15, 17, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 0;
 }
 
 .macro-tab-btn {
@@ -1243,7 +1244,7 @@ html, body {
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(19, 19, 21, 0.9);
   color: var(--text);
@@ -1468,7 +1469,7 @@ html, body {
 }
 
 .macro-surface-btn-diamond {
-  border-radius: 12px;
+  border-radius: 0;
   transform: rotate(45deg);
 }
 
@@ -1545,7 +1546,7 @@ html, body {
   max-height: 460px;
   overflow: auto;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(15, 15, 17, 0.88);
   font-family: "JetBrains Mono", "Fira Code", monospace;
@@ -1574,7 +1575,7 @@ html, body {
   flex: 1 1 auto;
   resize: vertical;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(15, 15, 17, 0.9);
   color: var(--text);
@@ -1653,7 +1654,7 @@ html, body {
 
 .macro-empty {
   padding: 18px;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px dashed rgba(255, 255, 255, 0.1);
   color: #b0aba1;
   line-height: 1.45;
@@ -2034,7 +2035,7 @@ html, body {
 .modal {
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: 0;
   min-width: 400px;
   max-width: 600px;
   max-height: 80vh;
