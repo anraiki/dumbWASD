@@ -512,11 +512,30 @@ html, body {
 /* ── Grid ── */
 
 #grid-container {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: auto;
+  isolation: isolate;
+}
+
+#grid-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("./assets/bg.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: -1;
+}
+
+#grid-container.macro-workspace-host::before {
+  content: none;
 }
 
 #grid-container.macro-workspace-host {
@@ -542,6 +561,7 @@ html, body {
   width: min(100%, 520px);
   min-height: 500px;
   max-height: 100%;
+  opacity: 0.75;
   user-select: none;
   -webkit-user-select: none;
 }
