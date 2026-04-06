@@ -40,6 +40,8 @@ export interface Profile {
 
 // ── Utilities ──
 
+const SELECTED_DEVICE_STORAGE_KEY = "dumbwasd:selected-device-by-profile";
+
 export function normalizeDeviceLabel(value?: string | null): string {
   return (value || "")
     .trim()
@@ -50,6 +52,45 @@ export function normalizeDeviceLabel(value?: string | null): string {
 
 function deviceIdentity(device: { id?: string; vendor_id: number; product_id: number }): string {
   return device.id || `${device.vendor_id}:${device.product_id}`;
+}
+
+function loadSelectedDeviceMap(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SELECTED_DEVICE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveSelectedDeviceMap(value: Record<string, string>) {
+  try {
+    window.localStorage.setItem(SELECTED_DEVICE_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures and continue with in-memory state.
+  }
+}
+
+function getSavedSelectedDeviceId(profileName: string): string | null {
+  const selectedByProfile = loadSelectedDeviceMap();
+  return selectedByProfile[profileName] ?? null;
+}
+
+function setSavedSelectedDeviceId(profileName: string, deviceId: string | null) {
+  const selectedByProfile = loadSelectedDeviceMap();
+  if (deviceId) {
+    selectedByProfile[profileName] = deviceId;
+  } else {
+    delete selectedByProfile[profileName];
+  }
+  saveSelectedDeviceMap(selectedByProfile);
 }
 
 function findDeviceEntry(
@@ -234,6 +275,9 @@ export function createProfileManager(options: {
 
     selectedDevice = device;
     options.deviceBar.setSelected(device);
+    if (currentProfileName) {
+      setSavedSelectedDeviceId(currentProfileName, deviceIdentity(device));
+    }
     options.statusEl.textContent = device.name;
 
     const resolvedLayout = device.layout || await resolveLayoutForDevice(device);
@@ -294,7 +338,11 @@ export function createProfileManager(options: {
         options.syncAuxPanels();
 
         if (currentProfile.devices.length > 0) {
-          await selectDevice(currentProfile.devices[0]);
+          const savedDeviceId = getSavedSelectedDeviceId(name);
+          const restoredDevice = currentProfile.devices.find(
+            (device) => deviceIdentity(device) === savedDeviceId
+          );
+          await selectDevice(restoredDevice ?? currentProfile.devices[0]);
         }
       } catch (e) {
         options.statusEl.textContent = `Error loading profile: ${e}`;
@@ -345,6 +393,9 @@ export function createProfileManager(options: {
         if (currentProfile.devices.length > 0) {
           await selectDevice(currentProfile.devices[0]);
         } else {
+          if (currentProfileName) {
+            setSavedSelectedDeviceId(currentProfileName, null);
+          }
           currentLayout = null;
           selectedLayout = null;
           const layoutSelect = options.layoutSelectorEl.querySelector<HTMLSelectElement>("select");
