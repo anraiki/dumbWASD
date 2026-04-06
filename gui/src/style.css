@@ -142,15 +142,6 @@ html, body {
   flex: 1;
 }
 
-.titlebar-mark {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.32);
-  flex-shrink: 0;
-}
-
 .titlebar-title {
   min-width: 0;
   overflow: hidden;
@@ -714,69 +705,6 @@ html, body {
   transform: translateY(-50%) rotate(225deg);
 }
 
-.binding-popover-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.binding-popover-kicker {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(var(--accent-rgb), 0.8);
-}
-
-.binding-popover-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.binding-popover-close:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.binding-popover-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.binding-popover-title {
-  font-size: 24px;
-  line-height: 1.05;
-  color: var(--accent-glow);
-}
-
-.binding-popover-subtitle {
-  margin-top: 6px;
-  font-size: 12px;
-  color: rgba(241, 239, 233, 0.62);
-}
-
-.binding-popover-badge {
-  flex-shrink: 0;
-  padding: 6px 9px;
-  border: 1px solid rgba(var(--accent-rgb), 0.2);
-  border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.08);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--accent-rgb), 0.82);
-}
-
 .binding-popover-preview {
   display: flex;
   flex-direction: column;
@@ -800,6 +728,20 @@ html, body {
   font-size: 18px;
   color: var(--accent-glow);
 }
+
+.binding-popover-none {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.binding-popover-none-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.72;
+}
+
 
 .binding-popover-field {
   display: flex;
@@ -840,6 +782,11 @@ html, body {
   font-weight: 600;
   color: #111111;
 }
+
+.binding-popover-capture-value .binding-popover-none-icon {
+  opacity: 0.88;
+}
+
 
 .binding-popover-capture-hint {
   font-size: 12px;

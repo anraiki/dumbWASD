@@ -44,7 +44,6 @@ export function mountAppShell(container: HTMLElement): AppShellRefs {
             <span></span><span></span><span></span>
           </button>
           <div class="titlebar-brand">
-            <span class="titlebar-mark" aria-hidden="true"></span>
             <span class="titlebar-title" id="window-title">dumbWASD</span>
           </div>
         </div>

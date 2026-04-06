@@ -137,7 +137,7 @@ export function getInputCodeLabel(code: number): string {
 
 export function getMappingTargetLabel(target: MappingTarget | null | undefined): string {
   if (!target) {
-    return "Unassigned";
+    return "None";
   }
 
   if (target.type === "shortcut") {
