@@ -6,3 +6,6 @@ target/
 gui/node_modules/
 gui/dist/
 gui/bun.lock
+
+# Inkscape crash-recovery autosaves (name.svg.YYYY_MM_DD_*.svg)
+*.svg.2*.svg
