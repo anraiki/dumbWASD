@@ -1,12 +1,25 @@
 import { getInputCodeLabel } from "./input-codes";
 
 const REL_AXIS_NAMES: Record<number, string> = {
-  0: "ABS_X",
-  1: "ABS_Y",
+  0: "REL_X",
+  1: "REL_Y",
   6: "REL_HWHEEL",
   8: "REL_WHEEL",
   11: "REL_WHEEL_HI_RES",
   12: "REL_HWHEEL_HI_RES",
+};
+
+// Absolute axes carry range info (min/max from the device's absinfo);
+// relative axes never do. That is how the two are told apart below.
+const ABS_AXIS_NAMES: Record<number, string> = {
+  0: "ABS_X",
+  1: "ABS_Y",
+  2: "ABS_Z",
+  3: "ABS_RX",
+  4: "ABS_RY",
+  5: "ABS_RZ",
+  16: "ABS_HAT0X",
+  17: "ABS_HAT0Y",
 };
 
 const MAX_LOG_ENTRIES = 100;
@@ -62,12 +75,14 @@ export function createEventLog(
       maximum?: number,
       flat?: number,
     ) {
-      const name = REL_AXIS_NAMES[axis] || `REL_${axis}`;
+      const hasRange = typeof minimum === "number" && typeof maximum === "number" && maximum > minimum;
+      const name = hasRange
+        ? ABS_AXIS_NAMES[axis] || `ABS_${axis}`
+        : REL_AXIS_NAMES[axis] || `REL_${axis}`;
       const sourceEntry = devicePath ? findDeviceByPath(devicePath) : null;
       const sourceLabel = deviceName || sourceEntry?.name || devicePath || "Unknown device";
       const entry = document.createElement("div");
       entry.className = "event-entry event-axis";
-      const hasRange = typeof minimum === "number" && typeof maximum === "number" && maximum > minimum;
       const normalized = hasRange
         ? Math.round((((value - minimum) / (maximum - minimum)) * 2 - 1) * 100)
         : null;

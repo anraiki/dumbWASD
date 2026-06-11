@@ -111,9 +111,32 @@ const MOUSE_CODE_LABELS: Array<[number, string]> = [
   [276, "Mouse 5"],
 ];
 
+// Gamepad buttons are input sources only (not mapping targets), so they are
+// part of INPUT_CODE_LABELS but not MAPPING_TARGET_OPTIONS.
+const GAMEPAD_CODE_LABELS: Array<[number, string]> = [
+  [304, "Gamepad A"],
+  [305, "Gamepad B"],
+  [307, "Gamepad Y"],
+  [308, "Gamepad X"],
+  [310, "Left Bumper"],
+  [311, "Right Bumper"],
+  [312, "Left Trigger"],
+  [313, "Right Trigger"],
+  [314, "View"],
+  [315, "Menu"],
+  [316, "Guide"],
+  [317, "Left Stick Press"],
+  [318, "Right Stick Press"],
+  [544, "D-pad Up"],
+  [545, "D-pad Down"],
+  [546, "D-pad Left"],
+  [547, "D-pad Right"],
+];
+
 const INPUT_CODE_LABELS = new Map<number, string>([
   ...KEYBOARD_CODE_LABELS,
   ...MOUSE_CODE_LABELS,
+  ...GAMEPAD_CODE_LABELS,
 ]);
 
 export const MAPPING_TARGET_OPTIONS: MappingTargetOption[] = [
