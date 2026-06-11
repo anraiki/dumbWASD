@@ -2,6 +2,16 @@
 
 Use these `inkscape:label` names for interactive Xbox controller shapes.
 
+## File locations
+
+| File | Role |
+| --- | --- |
+| `devices/xbox/layout.svg` | **Canonical rendered artwork.** Imported by `gui/src/devices/xbox.ts` via `@devices/xbox/layout.svg?raw`. This is the file the app ships. |
+| `devices/xbox/source.svg` | Inkscape master/template the layout was derived from. Slightly richer than the shipped file (keeps `TEXT_MENU`/`TEXT_VIEW` labels; uses `BACKGROUND_LB`/`BACKGROUND_RB` where layout.svg uses `BG_LB`/`BG_RB`). Start here when creating artwork for a new controller. |
+| `devices/xbox/source-analog.svg` | Older template variant using the pre-rename `BUTTON_ANALOG_*` zone labels. Kept as reference artwork. |
+
+Inkscape crash-recovery autosaves (`name.svg.YYYY_MM_DD_*.svg`) are gitignored — never commit them.
+
 ## Core buttons
 
 These are the primary mappable controls:
@@ -36,46 +46,28 @@ If you want hover/highlight regions for stick directions, use a separate shape f
 | `BUTTON_LSTICK_DOWN` | Left stick pushed down |
 | `BUTTON_LSTICK_LEFT` | Left stick pushed left |
 | `BUTTON_LSTICK_RIGHT` | Left stick pushed right |
-| `BUTTON_LSTICK_CENTER` | Left stick neutral / press hotspot |
+| `BUTTON_LSTICK_PRESS` | Left stick press hotspot (used instead of `_CENTER` in the shipped file) |
 | `BUTTON_RSTICK_UP` | Right stick pushed up |
 | `BUTTON_RSTICK_DOWN` | Right stick pushed down |
 | `BUTTON_RSTICK_LEFT` | Right stick pushed left |
 | `BUTTON_RSTICK_RIGHT` | Right stick pushed right |
-| `BUTTON_RSTICK_CENTER` | Right stick neutral / press hotspot |
+| `BUTTON_RSTICK_PRESS` | Right stick press hotspot (used instead of `_CENTER` in the shipped file) |
 
 ## Non-interactive layers
 
-Keep these as decoration only:
+Keep these as decoration only. Prefix conventions in the shipped file:
 
-- `BG_CONTROLLER`
-- `TEXT_A`
-- `TEXT_B`
-- `TEXT_X`
-- `TEXT_Y`
-- `OUTLINE`
-- `SHADOW`
+- `BG_*` — background/shadow fills (`BG_Controller`, `BG_LB`, `BG_RB`)
+- `TEXT_*` — button glyph text (`TEXT_A`, `TEXT_B`, `TEXT_X`, `TEXT_Y`)
+- `OUTLINE_*` — stroke outlines per control (`OUTLINE_A`, `OUTLINE_LSTICK_INNER`, `OUTLINE_RSTICK_PRESS`, ...)
 
-## Rename guide for the current SVG
+## Current state of the shipped SVG
 
-The current [`gui/src/assets/xbox.svg`](/home/anri/Documents/projects/dumbWASD/gui/src/assets/xbox.svg) is close, but these names should be normalized:
+The rename guide that used to live here has been carried out — `devices/xbox/layout.svg` now uses normalized `BUTTON_*` labels throughout (verified June 2026). Known gaps:
 
-| Current label | Recommended label |
-| --- | --- |
-| `LB` | `BUTTON_LB` |
-| `RB` | `BUTTON_RB` |
-| `BUTTON_START` | `BUTTON_VIEW` |
-| `BUTTON_SELECT` | `BUTTON_MENU` |
-| `BUTTON_HOME` or `HOME` | `BUTTON_GUIDE` |
-| `PAD_TOP` | `BUTTON_DPAD_UP` |
-| `PAD_DOWN` | `BUTTON_DPAD_DOWN` |
-| `PAD_LEFT` | `BUTTON_DPAD_LEFT` |
-| `PAD_RIGHT` | `BUTTON_DPAD_RIGHT` |
-| `BUTTON_L_ANALOG_TOP` | `BUTTON_LSTICK_UP` |
-| `BUTTON_L_ANALOG_BOTTOM` | `BUTTON_LSTICK_DOWN` |
-| `BUTTON_L_ANALOG_LEFT` | `BUTTON_LSTICK_LEFT` |
-| `BUTTON_L_ANALOG_RIGHT` | `BUTTON_LSTICK_RIGHT` |
-| `BUTTON_L_ANALOG_MIDDLE` | `BUTTON_LSTICK_CENTER` |
-| Right stick copies still named `BUTTON_L_ANALOG_*` | Rename them to `BUTTON_RSTICK_*` |
+- `BUTTON_LT` / `BUTTON_RT` (triggers) are not drawn yet.
+- Stick press hotspots are labeled `BUTTON_LSTICK_PRESS` / `BUTTON_RSTICK_PRESS` (not `_CENTER`).
+- `TEXT_MENU` / `TEXT_VIEW` labels exist only in `devices/xbox/source.svg`, not the shipped file.
 
 ## Minimal set
 

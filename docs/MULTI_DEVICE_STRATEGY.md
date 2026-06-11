@@ -267,6 +267,15 @@ pub struct DeviceId {
 // "keyboard:Logitech_G915:serial123"
 ```
 
+**Implemented (June 2026):** profile devices carry a compound identity `"vendor_id:product_id:name"` (e.g. `"10462:4607:Microsoft X-Box 360 pad 0"`), falling back to `"vendor_id:product_id"` when no name is known — see `ProfileDevice::identity_key()` in `crates/dumbwasd-core/src/core/profile.rs`. The GUI matches a profile device against connected devices in tiers (`findDeviceEntry` in `gui/src/profile-manager.ts`):
+
+1. exact identity match
+2. vendor + product match, disambiguated by name/raw-name aliases
+3. single vendor + product candidate
+4. fallback: same vendor + matching device kind capability (azeron/mouse/gamepad/keyboard), disambiguated by name aliases
+
+A profile device with no match on the system is kept in the profile but flagged `active: false`, and the device bar renders it as inactive rather than dropping it.
+
 ### 3. **Permission Management**
 **Problem:** Need root to read /dev/input
 **Solution:**

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the proposed binding system model for dumbWASD before implementation.
+This document defines the binding system model for dumbWASD. It started as a pre-implementation proposal; the core schema is now implemented (see Implementation Status below).
 
 The design goals are:
 
@@ -13,6 +13,17 @@ The design goals are:
 - keep the model extensible without forcing a redesign later
 
 This design is conceptually similar to firmware-driven layout systems such as MoErgo/ZMK, but adapted for a host-side remapper that grabs physical input devices and emits virtual output events.
+
+## Implementation Status (June 2026)
+
+The schema is mid-migration from flat global mappings to the per-device preset model described here. Current state of each layer:
+
+- **Core schema — done.** `crates/dumbwasd-core/src/core/profile.rs` implements `Profile -> ProfileDevice[] -> BindingPreset[] -> Binding[]/Combo[]` exactly as designed, including `trigger`, `behavior`, `output`, and `playback` as separate fields. Serde aliases accept the older field names (`binding_profiles` -> `binding_presets`, `active_binding_profile` -> `active_binding_preset`).
+- **Mapping engine — done, with fallback.** `mapping.rs` resolves bindings from each device's active preset first. The top-level flat `[[mappings]]` table on `Profile` is **legacy**, retained only for migration; the engine falls back to `resolve_legacy_mapping` when no preset binding matches.
+- **GUI — not migrated.** The frontend has no knowledge of binding presets yet. Event streaming (`gui/src-tauri/src/events.rs`) and the binder UI (`gui/src/binder/legacy.ts`) still read and write the legacy flat `[[mappings]]`.
+- **Profiles on disk — not migrated.** `profiles/default.toml` is still entirely legacy format: every device has `binding_presets = []` and bindings live in flat `[[mappings]]`.
+
+Practical consequence: edits the GUI makes to bindings today land in the legacy `[[mappings]]` table and are throwaway state. When touching profile TOMLs or GUI binding code, prefer the preset schema. Remaining migration work: teach the GUI to write presets, migrate `default.toml`, then remove the legacy path.
 
 ## Core Principles
 
