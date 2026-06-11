@@ -93,32 +93,77 @@ function setSavedSelectedDeviceId(profileName: string, deviceId: string | null) 
   saveSelectedDeviceMap(selectedByProfile);
 }
 
+function entrySupportsDeviceKind(
+  entry: DeviceEntry,
+  deviceKind?: ProfileDeviceKind,
+): boolean {
+  switch (deviceKind) {
+    case "azeron":
+      return entry.is_azeron;
+    case "mouse":
+      return entry.has_mouse;
+    case "gamepad":
+      return entry.has_gamepad;
+    case "keyboard":
+      return entry.has_keyboard;
+    default:
+      return true;
+  }
+}
+
+function collectDeviceAliases(
+  device: { id?: string; name?: string; raw_name?: string },
+): Set<string> {
+  return new Set(
+    [device.id, device.name, device.raw_name]
+      .map((value) => normalizeDeviceLabel(value))
+      .filter(Boolean)
+  );
+}
+
+function entryMatchesAliases(entry: DeviceEntry, aliases: Set<string>): boolean {
+  if (aliases.size === 0) {
+    return false;
+  }
+
+  const entryLabels = [entry.name, entry.raw_name, entry.id]
+    .map((value) => normalizeDeviceLabel(value))
+    .filter(Boolean);
+
+  return entryLabels.some((label) => aliases.has(label));
+}
+
 function findDeviceEntry(
-  device: { id?: string; vendor_id: number; product_id: number; name?: string; raw_name?: string },
+  device: {
+    id?: string;
+    vendor_id: number;
+    product_id: number;
+    name?: string;
+    raw_name?: string;
+    device_kind?: ProfileDeviceKind;
+  },
   allDevices: DeviceEntry[],
 ): DeviceEntry | null {
   const identity = deviceIdentity(device);
   const exactMatch = allDevices.find((entry) => entry.id === identity);
   if (exactMatch) return exactMatch;
 
+  const aliases = collectDeviceAliases(device);
   const candidates = allDevices.filter(
     (entry) => entry.vendor_id === device.vendor_id && entry.product_id === device.product_id
   );
-  if (candidates.length === 0) return null;
-
-  const aliases = new Set(
-    [device.name, device.raw_name].map((v) => normalizeDeviceLabel(v)).filter(Boolean)
-  );
-
-  const namedMatches = candidates.filter((entry) => {
-    const entryLabels = [entry.name, entry.raw_name, entry.id]
-      .map((v) => normalizeDeviceLabel(v))
-      .filter(Boolean);
-    return entryLabels.some((label) => aliases.has(label));
-  });
+  const namedMatches = candidates.filter((entry) => entryMatchesAliases(entry, aliases));
 
   if (namedMatches.length === 1) return namedMatches[0];
-  return candidates.length === 1 ? candidates[0] : null;
+  if (candidates.length === 1) return candidates[0];
+
+  const vendorKindCandidates = allDevices.filter(
+    (entry) => entry.vendor_id === device.vendor_id && entrySupportsDeviceKind(entry, device.device_kind)
+  );
+  const vendorKindNameMatches = vendorKindCandidates.filter((entry) => entryMatchesAliases(entry, aliases));
+  if (vendorKindNameMatches.length === 1) return vendorKindNameMatches[0];
+
+  return null;
 }
 
 // ── Handle interface ──
@@ -199,12 +244,22 @@ export function createProfileManager(options: {
     return devices.map((device) => {
       const entry = findDeviceEntry(device, options.allDevices);
       const device_kind = device.device_kind ?? getDeviceKind(entry);
-      if (!entry && !device_kind) return device;
+      if (!entry && !device_kind) {
+        return {
+          ...device,
+          active: false,
+        };
+      }
+
       return {
         ...device,
-        id: device.id || entry?.id,
-        raw_name: device.raw_name || entry?.raw_name,
+        id: entry?.id ?? device.id,
+        vendor_id: entry?.vendor_id ?? device.vendor_id,
+        product_id: entry?.product_id ?? device.product_id,
+        name: entry?.name ?? device.name,
+        raw_name: entry?.raw_name ?? device.raw_name,
         device_kind,
+        active: !!entry,
       };
     });
   }

@@ -14,11 +14,11 @@ active_binding_preset = ""
 binding_presets = []
 
 [[devices]]
-id = ""
+id = "10462:4607:Microsoft X-Box 360 pad 0"
 vendor_id = 10462
 product_id = 4607
 name = "Microsoft X-Box 360 pad 0"
-raw_name = ""
+raw_name = "Microsoft X-Box 360 pad 0"
 layout = ""
 device_kind = "gamepad"
 active_binding_preset = ""
@@ -36,13 +36,6 @@ active_binding_preset = ""
 binding_presets = []
 
 [[mappings]]
-from = 304
-
-[mappings.to]
-type = "key"
-code = 33
-
-[[mappings]]
 from = 305
 
 [mappings.to]
@@ -55,20 +48,6 @@ from = 306
 [mappings.to]
 type = "key"
 code = 32
-
-[[mappings]]
-from = 307
-
-[mappings.to]
-type = "key"
-code = 17
-
-[[mappings]]
-from = 308
-
-[mappings.to]
-type = "key"
-code = 30
 
 [[mappings]]
 from = 309
