@@ -1,0 +1,33 @@
+schema_version = 1
+key = "steam-input-xbox-pad"
+
+vendor_id = 0x28DE
+product_id = 0x11FF
+
+vendor_name = "Valve"
+model = "Steam Input Virtual Gamepad"
+friendly_name = "Steam Input Xbox Pad"
+
+raw_name_aliases = [
+  "Microsoft X-Box 360 pad",
+  "Microsoft X-Box 360 pad 0",
+  "Microsoft X-Box 360 pad 1",
+  "Microsoft X-Box 360 pad 2",
+  "Microsoft X-Box 360 pad 3",
+]
+
+capabilities = ["gamepad"]
+button_count = 17
+
+search_terms = [
+  "steam",
+  "valve",
+  "virtual",
+  "gamepad",
+  "28de:11ff",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "Steam Input's virtual gamepad — a uinput device Steam creates while it remaps a physical controller. It impersonates 'Microsoft X-Box 360 pad N' with Valve's VID:PID, so it is renamed here to avoid confusion with real hardware. It only exists while Steam is running."
