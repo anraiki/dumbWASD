@@ -9,6 +9,33 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return editable instanceof HTMLElement;
 }
 
+const RESIZE_DIRECTIONS = [
+  "North",
+  "South",
+  "East",
+  "West",
+  "NorthEast",
+  "NorthWest",
+  "SouthEast",
+  "SouthWest",
+] as const;
+
+// With decorations disabled the window manager provides no resize borders,
+// so the frameless window needs its own edge/corner grips.
+function setupResizeGrips(appWindow: AppWindow) {
+  for (const direction of RESIZE_DIRECTIONS) {
+    const grip = document.createElement("div");
+    grip.className = "window-resize-grip";
+    grip.dataset.direction = direction;
+    grip.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      void appWindow.startResizeDragging(direction);
+    });
+    document.body.appendChild(grip);
+  }
+}
+
 export async function setupWindowChrome(options: {
   appWindow: AppWindow;
   titleBar: HTMLElement;
@@ -35,6 +62,7 @@ export async function setupWindowChrome(options: {
     try {
       options.windowTitleEl.textContent = await appWindow.title();
       const maximized = await appWindow.isMaximized();
+      document.body.classList.toggle("window-is-maximized", maximized);
       options.maximizeWindowBtn.classList.toggle("is-maximized", maximized);
       options.maximizeWindowBtn.title = maximized ? "Restore" : "Maximize";
       options.maximizeWindowBtn.setAttribute("aria-label", maximized ? "Restore window" : "Maximize window");
@@ -58,6 +86,8 @@ export async function setupWindowChrome(options: {
   options.minimizeWindowBtn.addEventListener("click", () => void appWindow.minimize());
   options.maximizeWindowBtn.addEventListener("click", () => void appWindow.toggleMaximize().then(syncWindowChrome));
   options.closeWindowBtn.addEventListener("click", () => void appWindow.close());
+
+  setupResizeGrips(appWindow);
 
   const unlistenWindowResize = await appWindow.onResized(() => void syncWindowChrome());
 

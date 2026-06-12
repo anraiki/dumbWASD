@@ -2549,3 +2549,79 @@ html, body {
   padding: 2px 3px;
   margin: 0;
 }
+
+/* ── Frameless window resize grips ── */
+
+.window-resize-grip {
+  position: fixed;
+  z-index: 10000;
+  background: transparent;
+}
+
+.window-resize-grip[data-direction="North"] {
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 5px;
+  cursor: n-resize;
+}
+
+.window-resize-grip[data-direction="South"] {
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  height: 5px;
+  cursor: s-resize;
+}
+
+.window-resize-grip[data-direction="West"] {
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 5px;
+  cursor: w-resize;
+}
+
+.window-resize-grip[data-direction="East"] {
+  right: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 5px;
+  cursor: e-resize;
+}
+
+.window-resize-grip[data-direction="NorthWest"] {
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nw-resize;
+}
+
+.window-resize-grip[data-direction="NorthEast"] {
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: ne-resize;
+}
+
+.window-resize-grip[data-direction="SouthWest"] {
+  bottom: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: sw-resize;
+}
+
+.window-resize-grip[data-direction="SouthEast"] {
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: se-resize;
+}
+
+body.window-is-maximized .window-resize-grip {
+  display: none;
+}

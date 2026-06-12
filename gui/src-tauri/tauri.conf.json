@@ -15,8 +15,8 @@
         "title": "dumbWASD",
         "width": 1100,
         "height": 700,
-        "minWidth": 965,
-        "minHeight": 550,
+        "minWidth": 1100,
+        "minHeight": 700,
         "decorations": false,
         "resizable": true,
         "fullscreen": false
