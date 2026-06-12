@@ -1,20 +1,27 @@
+export interface AnalogVectorKeys {
+  left?: string;
+  right?: string;
+  up?: string;
+  down?: string;
+}
+
+export type AnalogStick = "left" | "right";
+
 export interface DeviceSvgConfig {
   markup: string;
   previewLabel: string;
   aliases: Map<string, Set<string>>;
   buttonCodes: Map<number, string>;
   buttonLabels: Map<number, string>;
-  analogVectorKeys?: {
-    left?: string;
-    right?: string;
-    up?: string;
-    down?: string;
-  };
+  /// Directional highlight zones for the primary (left) analog stick.
+  analogVectorKeys?: AnalogVectorKeys;
+  /// Directional highlight zones for the right analog stick, when the device has one.
+  rightAnalogVectorKeys?: AnalogVectorKeys;
 }
 
 export interface DeviceSvgHandle {
   setButtonState(code: number, pressed: boolean): void;
-  setJoystickVector(x: number, y: number): void;
+  setJoystickVector(x: number, y: number, stick?: AnalogStick): void;
   setSelected(code: number | null): void;
   clearAll(): void;
   destroy(): void;
@@ -44,7 +51,10 @@ export function createDeviceSvgPreview(
     targets.set(key, []);
   }
   let selectedCode: number | null = null;
-  let activeAnalogKeys = new Set<string>();
+  const activeAnalogKeys: Record<AnalogStick, Set<string>> = {
+    left: new Set(),
+    right: new Set(),
+  };
 
   const elements = svg.querySelectorAll<SVGElement>("*");
   for (const element of elements) {
@@ -105,37 +115,39 @@ export function createDeviceSvgPreview(
 
       setTargetActive(key, pressed);
     },
-    setJoystickVector(x: number, y: number) {
+    setJoystickVector(x: number, y: number, stick: AnalogStick = "left") {
+      const vectorKeys = stick === "right" ? config.rightAnalogVectorKeys : config.analogVectorKeys;
       const nextAnalogKeys = new Set<string>();
       const threshold = 0.35;
 
-      if (config.analogVectorKeys) {
-        if (x <= -threshold && config.analogVectorKeys.left) {
-          nextAnalogKeys.add(config.analogVectorKeys.left);
+      if (vectorKeys) {
+        if (x <= -threshold && vectorKeys.left) {
+          nextAnalogKeys.add(vectorKeys.left);
         }
-        if (x >= threshold && config.analogVectorKeys.right) {
-          nextAnalogKeys.add(config.analogVectorKeys.right);
+        if (x >= threshold && vectorKeys.right) {
+          nextAnalogKeys.add(vectorKeys.right);
         }
-        if (y <= -threshold && config.analogVectorKeys.up) {
-          nextAnalogKeys.add(config.analogVectorKeys.up);
+        if (y <= -threshold && vectorKeys.up) {
+          nextAnalogKeys.add(vectorKeys.up);
         }
-        if (y >= threshold && config.analogVectorKeys.down) {
-          nextAnalogKeys.add(config.analogVectorKeys.down);
+        if (y >= threshold && vectorKeys.down) {
+          nextAnalogKeys.add(vectorKeys.down);
         }
       }
 
-      for (const key of activeAnalogKeys) {
+      const previousKeys = activeAnalogKeys[stick];
+      for (const key of previousKeys) {
         if (!nextAnalogKeys.has(key)) {
           setTargetActive(key, false);
         }
       }
       for (const key of nextAnalogKeys) {
-        if (!activeAnalogKeys.has(key)) {
+        if (!previousKeys.has(key)) {
           setTargetActive(key, true);
         }
       }
 
-      activeAnalogKeys = nextAnalogKeys;
+      activeAnalogKeys[stick] = nextAnalogKeys;
     },
     setSelected(code: number | null) {
       if (selectedCode !== null) {
@@ -161,7 +173,8 @@ export function createDeviceSvgPreview(
           element.classList.remove("active");
         }
       }
-      activeAnalogKeys.clear();
+      activeAnalogKeys.left.clear();
+      activeAnalogKeys.right.clear();
     },
     destroy() {
       for (const elementsForKey of targets.values()) {

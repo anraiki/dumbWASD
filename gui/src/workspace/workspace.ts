@@ -38,15 +38,20 @@ export function createWorkspace(options: {
     ProfileManagerHandle,
     "getCurrentLayout" | "getSelectedLayout" | "loadLayout" | "getSelectedDevice"
   >;
-  joystickTracker: { getCurrentVector(): { x: number; y: number } | null };
+  joystickTracker: { getCurrentVector(stick?: "left" | "right"): { x: number; y: number } | null };
   bindingController: BindingPopoverController;
 }): WorkspaceHandle {
   function applyJoystickVector() {
     const v = options.joystickTracker.getCurrentVector();
-    if (!v) return;
-    options.getButtonGrid()?.setJoystickVector(v.x, v.y);
-    options.getLayoutEditor()?.setJoystickVector(v.x, v.y);
-    options.getDeviceSvgPreview()?.setJoystickVector(v.x, v.y);
+    if (v) {
+      options.getButtonGrid()?.setJoystickVector(v.x, v.y);
+      options.getLayoutEditor()?.setJoystickVector(v.x, v.y);
+      options.getDeviceSvgPreview()?.setJoystickVector(v.x, v.y);
+    }
+    const right = options.joystickTracker.getCurrentVector("right");
+    if (right) {
+      options.getDeviceSvgPreview()?.setJoystickVector(right.x, right.y, "right");
+    }
   }
 
   function renderViewMode(currentLayout: DeviceLayout) {
@@ -145,6 +150,8 @@ export function createWorkspace(options: {
     }
     const v = options.joystickTracker.getCurrentVector();
     if (v) preview.setJoystickVector(v.x, v.y);
+    const right = options.joystickTracker.getCurrentVector("right");
+    if (right) preview.setJoystickVector(right.x, right.y, "right");
   }
 
   function syncAuxPanels() {

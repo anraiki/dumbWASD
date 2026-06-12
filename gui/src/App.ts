@@ -160,10 +160,13 @@ export async function createApp(container: HTMLElement) {
       const entry = selected ? profileManager.findSystemEntry(selected) : null;
       return entry?.is_azeron ? entry.paths : null;
     },
-    onVectorChange: (x, y) => {
-      state.getButtonGrid()?.setJoystickVector(x, y);
-      state.getLayoutEditor()?.setJoystickVector(x, y);
-      state.getDeviceSvgPreview()?.setJoystickVector(x, y);
+    onVectorChange: (x, y, stick) => {
+      // The button grid and layout editor only visualize the primary stick.
+      if (stick === "left") {
+        state.getButtonGrid()?.setJoystickVector(x, y);
+        state.getLayoutEditor()?.setJoystickVector(x, y);
+      }
+      state.getDeviceSvgPreview()?.setJoystickVector(x, y, stick);
     },
   });
 

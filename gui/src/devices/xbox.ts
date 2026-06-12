@@ -90,4 +90,10 @@ export const XBOX_SVG_CONFIG: DeviceSvgConfig = {
     up: "LSTICK_UP",
     down: "LSTICK_DOWN",
   },
+  rightAnalogVectorKeys: {
+    left: "RSTICK_LEFT",
+    right: "RSTICK_RIGHT",
+    up: "RSTICK_UP",
+    down: "RSTICK_DOWN",
+  },
 };

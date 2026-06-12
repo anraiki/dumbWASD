@@ -5,10 +5,21 @@ const { center: JOYSTICK_CENTER, span: JOYSTICK_SPAN, keyboard_direction_codes }
 
 const KEYBOARD_DIRECTION_CODES = new Set(keyboard_direction_codes);
 
-const JOYSTICK_AXIS_CODES = new Set([0, 1]);
+export type JoystickStick = "left" | "right";
+
+// Left stick: ABS_X (0) / ABS_Y (1). Right stick: ABS_RX (3) / ABS_RY (4).
+const STICK_AXES: Record<JoystickStick, { x: number; y: number }> = {
+  left: { x: 0, y: 1 },
+  right: { x: 3, y: 4 },
+};
+const JOYSTICK_AXIS_CODES = new Set([0, 1, 3, 4]);
 const JOYSTICK_ACTIVITY_WINDOW_MS = 140;
 const JOYSTICK_DEFAULT_MIN = 0;
 const JOYSTICK_DEFAULT_MAX = 1023;
+
+function stickForAxis(axis: number): JoystickStick {
+  return axis === STICK_AXES.right.x || axis === STICK_AXES.right.y ? "right" : "left";
+}
 
 interface DeviceInfo {
   is_azeron: boolean;
@@ -30,7 +41,7 @@ export interface JoystickTrackerHandle {
   ): void;
   updateVectorFromAzeronHid(payload: { x: number; y: number }): void;
   shouldTreatAsEmulated(code: number, pressed: boolean): boolean;
-  getCurrentVector(): { x: number; y: number } | null;
+  getCurrentVector(stick?: JoystickStick): { x: number; y: number } | null;
   reset(): void;
 }
 
@@ -38,13 +49,16 @@ export function createJoystickTracker(options: {
   isSelectedAzeron(): boolean;
   findDeviceByPath(path: string): DeviceInfo | null;
   getSelectedDevicePaths(): string[] | null;
-  onVectorChange(x: number, y: number): void;
+  onVectorChange(x: number, y: number, stick: JoystickStick): void;
 }): JoystickTrackerHandle {
   const joystickAxisValues = new Map<string, Map<number, number>>();
   const joystickAxisNormalized = new Map<string, Map<number, number>>();
   const joystickEmulatedDirectionCodes = new Set<number>();
   let lastJoystickMotionAt = 0;
-  let currentJoystickVector: { x: number; y: number } | null = null;
+  const currentVectors: Record<JoystickStick, { x: number; y: number } | null> = {
+    left: null,
+    right: null,
+  };
 
   function isLikelyJoystickAxisSource(devicePath: string, deviceName?: string): boolean {
     const sourceEntry = options.findDeviceByPath(devicePath);
@@ -138,12 +152,15 @@ export function createJoystickTracker(options: {
       const normalized = normalizeJoystickAxisValue(value, minimum, maximum, flat);
       pathAxes.set(axis, normalized);
 
-      currentJoystickVector = {
-        x: pathAxes.get(0) ?? 0,
-        y: pathAxes.get(1) ?? 0,
+      const stick = stickForAxis(axis);
+      const axes = STICK_AXES[stick];
+      const vector = {
+        x: pathAxes.get(axes.x) ?? 0,
+        y: pathAxes.get(axes.y) ?? 0,
       };
+      currentVectors[stick] = vector;
 
-      options.onVectorChange(currentJoystickVector.x, currentJoystickVector.y);
+      options.onVectorChange(vector.x, vector.y, stick);
     },
 
     updateVectorFromAzeronHid(payload: { x: number; y: number }) {
@@ -152,12 +169,13 @@ export function createJoystickTracker(options: {
       }
 
       lastJoystickMotionAt = Date.now();
-      currentJoystickVector = {
+      const vector = {
         x: normalizeAzeronJoystickValue(payload.x),
         y: normalizeAzeronJoystickValue(payload.y),
       };
+      currentVectors.left = vector;
 
-      options.onVectorChange(currentJoystickVector.x, currentJoystickVector.y);
+      options.onVectorChange(vector.x, vector.y, "left");
     },
 
     shouldTreatAsEmulated(code: number, pressed: boolean): boolean {
@@ -182,8 +200,8 @@ export function createJoystickTracker(options: {
       return false;
     },
 
-    getCurrentVector() {
-      return currentJoystickVector;
+    getCurrentVector(stick: JoystickStick = "left") {
+      return currentVectors[stick];
     },
 
     reset() {
@@ -191,7 +209,8 @@ export function createJoystickTracker(options: {
       joystickAxisValues.clear();
       joystickAxisNormalized.clear();
       lastJoystickMotionAt = 0;
-      currentJoystickVector = null;
+      currentVectors.left = null;
+      currentVectors.right = null;
     },
   };
 }
