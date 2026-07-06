@@ -16,6 +16,7 @@ export function createBindingPopoverController(options: {
       onClose(): void;
       onSave(binding: MappingTarget): Promise<void>;
       onReset(): Promise<void>;
+      onOpenMacroStudio?(): void;
     }): void;
     close(): void;
   };
@@ -25,6 +26,7 @@ export function createBindingPopoverController(options: {
   getIsMacroMode(): boolean;
   getHasProfile(): boolean;
   onSelectionChange(code: number | null): void;
+  onOpenMacroStudio?(): void;
 }): BindingPopoverController {
   function clearSelection() {
     options.onSelectionChange(null);
@@ -58,6 +60,7 @@ export function createBindingPopoverController(options: {
           await options.legacyBinder.persist(button.id, null);
           options.statusEl.textContent = `${button.label} mapping cleared`;
         },
+        onOpenMacroStudio: options.onOpenMacroStudio,
       });
     },
 

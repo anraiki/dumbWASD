@@ -1,7 +1,7 @@
 export interface SurfaceKey {
   label: string;
   code?: number;
-  width?: "wide" | "xl";
+  width?: "wide" | "xl" | "space";
 }
 
 export const INPUT_NAMES: Record<number, string> = {
@@ -13,7 +13,7 @@ export const INPUT_NAMES: Record<number, string> = {
   49: "N", 50: "M", 51: ",", 52: ".", 53: "/", 54: "SHIFT", 56: "ALT", 57: "SPACE",
   59: "F1", 60: "F2", 61: "F3", 62: "F4", 63: "F5", 64: "F6", 65: "F7", 66: "F8", 67: "F9",
   68: "F10", 87: "F11", 88: "F12", 96: "NUMPAD_ENTER", 97: "CTRL", 100: "ALT",
-  103: "UP", 105: "LEFT", 106: "RIGHT", 108: "DOWN", 110: "INSERT", 111: "DELETE",
+  103: "UP", 105: "LEFT", 106: "RIGHT", 108: "DOWN", 110: "INSERT", 111: "DELETE", 125: "WIN",
   272: "MOUSE_LEFT", 273: "MOUSE_RIGHT", 274: "MOUSE_MIDDLE", 275: "MOUSE_4", 276: "MOUSE_5",
 };
 
@@ -48,9 +48,9 @@ export const KEYBOARD_ROWS: SurfaceKey[][] = [
     { label: ",", code: 51 }, { label: ".", code: 52 }, { label: "/", code: 53 }, { label: "Shift", code: 54, width: "xl" },
   ],
   [
-    { label: "Ctrl", code: 29, width: "wide" }, { label: "Alt", code: 56, width: "wide" }, { label: "Space", code: 57, width: "xl" },
-    { label: "Alt", code: 100, width: "wide" }, { label: "Ctrl", code: 97, width: "wide" },
-    { label: "Left", code: 105 }, { label: "Down", code: 108 }, { label: "Right", code: 106 }, { label: "Up", code: 103 },
+    { label: "Ctrl", code: 29, width: "wide" }, { label: "Win", code: 125, width: "wide" }, { label: "Alt", code: 56, width: "wide" },
+    { label: "Space", code: 57, width: "space" },
+    { label: "Alt", code: 100, width: "wide" }, { label: "Fn", width: "wide" }, { label: "Ctrl", code: 97, width: "wide" },
   ],
 ];
 

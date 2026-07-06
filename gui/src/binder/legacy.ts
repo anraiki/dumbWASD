@@ -37,6 +37,27 @@ export function createLegacyBinder(options: {
       const mapping = getMapping(code);
       if (!mapping) return;
 
+      if (mapping.type === "macro") {
+        // Playback uses the profile-embedded snapshot, never the library.
+        const { definition } = mapping;
+
+        if (mapping.mode === "hold") {
+          // Hold semantics: playback runs while the button is held.
+          if (pressed) {
+            await invoke("start_macro_playback", { definition });
+          } else {
+            await invoke("stop_macro_playback", { id: definition.id });
+          }
+          return;
+        }
+
+        // Toggle semantics: press starts the macro, pressing again stops it.
+        // Releases are ignored.
+        if (!pressed) return;
+        await invoke("toggle_macro_playback", { definition });
+        return;
+      }
+
       await invoke("emit_output_target", { target: mapping, pressed });
     },
 

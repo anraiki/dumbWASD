@@ -769,6 +769,59 @@ html, body {
   border-radius: 0;
 }
 
+.binding-popover-macro-select {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(20, 20, 22, 0.82);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+.binding-popover-macro-select:focus {
+  border-color: rgba(var(--accent-rgb), 0.54);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+}
+
+.binding-popover-macro-select:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.binding-popover-import-status {
+  margin: -2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9f9a92;
+}
+
+.binding-popover-import-status.differs {
+  color: #d9b96a;
+}
+
+.binding-popover-import-status.missing {
+  color: #c9a0a0;
+}
+
+.binding-popover-reimport {
+  margin-left: 6px;
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.binding-popover-reimport:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
 .binding-popover-capture {
   width: 100%;
   display: flex;
@@ -934,75 +987,157 @@ html, body {
 
 .macro-command-bar {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 26px;
+  padding: 14px 18px;
   flex-wrap: wrap;
 }
 
-.macro-field {
+.macro-toolbar-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
-.macro-field-compact {
-  min-width: 118px;
-  flex: 0 0 118px;
-}
-
-.macro-field span {
+.macro-toolbar-label {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #9f9a92;
+  color: #8f8b84;
 }
 
-.macro-field input {
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
+.macro-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(20, 20, 22, 0.82);
+  overflow: hidden;
+}
+
+.macro-stepper-btn {
+  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #b7b2a9;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.macro-stepper-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.macro-stepper-value {
+  display: inline-flex;
+  align-items: baseline;
+  align-self: center;
+  gap: 3px;
+  padding: 0 4px;
+}
+
+.macro-stepper-value input {
+  width: 42px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  outline: none;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.macro-stepper-value input::-webkit-outer-spin-button,
+.macro-stepper-value input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.macro-stepper-value span {
+  font-size: 10px;
+  color: #8f8b84;
+  text-transform: lowercase;
+}
+
+.macro-library {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  height: 40px;
+}
+
+.macro-library-select {
+  min-width: 150px;
+  max-width: 220px;
+  padding: 0 12px;
   background: rgba(20, 20, 22, 0.82);
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   outline: none;
+  cursor: pointer;
 }
 
-.macro-field input:focus {
-  border-color: rgba(var(--accent-rgb), 0.48);
+.macro-library-select:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.macro-library-btn {
+  padding: 0 14px;
 }
 
 .macro-mode-switch {
   display: inline-flex;
-  padding: 4px;
+  align-items: stretch;
+  height: 40px;
+  padding: 3px;
   background: rgba(15, 15, 17, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .macro-mode-btn {
-  padding: 9px 12px;
+  padding: 0 14px;
   background: transparent;
-  color: #b7b2a9;
-  border: none;
-  border-radius: 8px;
+  color: #a5a19a;
+  border: 1px solid transparent;
+  border-radius: 7px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .macro-mode-btn.active {
-  background: rgba(var(--accent-rgb), 0.2);
-  color: var(--accent-glow);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: var(--text);
   font-weight: 700;
 }
 
-.macro-command-actions {
+.macro-transport-group {
+  margin-left: auto;
+}
+
+.macro-transport {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  flex-wrap: wrap;
+  gap: 8px;
+  height: 40px;
+}
+
+.macro-transport-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 6px;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .macro-compact-stats {
@@ -1091,35 +1226,50 @@ html, body {
   background: #ff5147;
 }
 
+.macro-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.macro-timeline-stats {
+  font-size: 12.5px;
+  color: #8f8b84;
+  white-space: nowrap;
+}
+
 .macro-tab-strip {
   display: inline-flex;
   width: fit-content;
   flex-shrink: 0;
-  padding: 4px;
-  background: rgba(15, 15, 17, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  gap: 6px;
 }
 
 .macro-tab-btn {
-  padding: 10px 14px;
+  padding: 10px 16px;
   background: transparent;
-  color: #b7b2a9;
-  border: none;
-  border-radius: 8px;
+  color: #a5a19a;
+  border: 1px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.macro-tab-btn:hover {
+  color: var(--text);
 }
 
 .macro-tab-btn.active {
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent-glow);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.18);
+  background: rgba(30, 30, 33, 0.98);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  font-weight: 700;
 }
 
 .macro-tab-utility {
-  margin-left: 4px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 6px;
 }
 
 .macro-tab-panel {
@@ -1138,9 +1288,9 @@ html, body {
 
 .macro-timeline-card {
   display: flex;
-  flex: 1 1 52%;
+  flex: 1 1 auto;
   flex-direction: column;
-  min-height: 260px;
+  min-height: 220px;
   overflow: hidden;
   padding: 8px;
 }
@@ -1201,12 +1351,55 @@ html, body {
   align-content: flex-start;
   align-items: stretch;
   row-gap: 10px;
+  column-gap: 10px;
   min-height: 216px;
+}
+
+.macro-flow-surface-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.macro-flow-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+}
+
+.macro-flow-empty svg {
+  width: 46px;
+  height: 24px;
+  color: #5b5852;
+  margin-bottom: 8px;
+}
+
+.macro-flow-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.macro-flow-empty-hint {
+  font-size: 13px;
+  color: #8f8b84;
+}
+
+.macro-flow-empty-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ff6b5b;
+  vertical-align: baseline;
 }
 
 .macro-flow-gap {
   width: 0;
-  height: 54px;
+  height: 48px;
   flex: 0 0 auto;
   border-radius: 10px;
   position: relative;
@@ -1227,7 +1420,7 @@ html, body {
   top: 50%;
   left: 50%;
   width: 4px;
-  height: 74px;
+  height: 64px;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.24), 0 0 18px rgba(var(--accent-rgb), 0.18);
@@ -1235,16 +1428,15 @@ html, body {
 }
 
 .macro-flow-chip {
-  height: 54px;
+  height: 48px;
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 12px;
+  display: inline-flex;
+  gap: 10px;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(19, 19, 21, 0.9);
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(28, 28, 30, 0.92);
   color: var(--text);
   user-select: none;
   transition: transform 0.14s ease, opacity 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
@@ -1264,17 +1456,11 @@ html, body {
   cursor: grabbing;
 }
 
-.macro-flow-chip-action {
-  background: rgba(210, 205, 197, 0.9);
-  color: #26262a;
-}
-
 .macro-flow-chip-wait {
   background: rgba(36, 36, 40, 0.95);
 }
 
 .macro-flow-chip-meta {
-  grid-template-columns: 1fr;
   cursor: default;
 }
 
@@ -1287,28 +1473,16 @@ html, body {
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.24), 0 0 16px rgba(var(--accent-rgb), 0.14);
 }
 
-.macro-flow-chip-order {
-  width: 28px;
-  height: 28px;
+.macro-flow-chip-arrow {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.14);
-  color: rgba(var(--accent-rgb), 0.94);
-  font-size: 12px;
-  font-weight: 700;
+  color: #a5a19a;
 }
 
-.macro-flow-chip-action .macro-flow-chip-order {
-  background: rgba(38, 38, 42, 0.12);
-  color: #26262a;
-}
-
-.macro-flow-chip-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.macro-flow-chip-arrow svg {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 .macro-flow-chip-label {
@@ -1320,14 +1494,9 @@ html, body {
 }
 
 .macro-flow-chip-input-name {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-}
-
-.macro-flow-chip-direction {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 
 .macro-flow-chip-input {
@@ -1337,8 +1506,8 @@ html, body {
 }
 
 .macro-flow-chip-input input {
-  width: 88px;
-  padding: 8px 10px;
+  width: 64px;
+  padding: 6px 8px;
   background: rgba(20, 20, 22, 0.82);
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1355,23 +1524,6 @@ html, body {
 .macro-flow-chip-meta {
   font-size: 14px;
   font-weight: 700;
-}
-
-.macro-flow-chip-remove {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: #ffb0b0;
-  border: 1px solid rgba(255, 124, 124, 0.3);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.macro-flow-chip-remove:hover {
-  background: rgba(255, 124, 124, 0.12);
 }
 
 .macro-flow-drag-preview {
@@ -1397,146 +1549,96 @@ html, body {
   z-index: 8;
 }
 
-.macro-stage-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  flex: 1 1 48%;
-  gap: 0;
-  min-height: 260px;
-  min-width: 0;
+.macro-keyinput-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.macro-keyinput-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.macro-keyinput-hint {
+  font-size: 12px;
+  color: #8f8b84;
 }
 
 .macro-surface-preview {
-  flex: 1 1 auto;
-  min-height: 260px;
-  padding: 0;
-  overflow: auto;
   min-width: 0;
-  border-radius: 0;
-  border: none;
-  background: rgba(12, 12, 14, 0.9);
 }
 
-.macro-surface-layout {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 96px;
-  gap: 20px;
-  align-items: start;
-  min-width: max-content;
-  min-height: max-content;
-  padding: 12px;
-}
-
-.macro-surface-caption {
-  margin-bottom: 14px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #9f9a92;
-}
-
-.macro-pad-panel,
-.macro-mouse-panel {
-  align-self: stretch;
+.macro-keyboard-grid {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 7px;
 }
 
-.macro-pad-row {
+.macro-keyboard-row {
   display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 7px;
 }
 
-.macro-surface-btn {
-  min-width: 38px;
-  min-height: 38px;
+.macro-key {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #d0cbc1;
-  background: rgba(18, 18, 20, 0.66);
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(24, 24, 26, 0.85);
+  color: #c7c2b8;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
-.macro-surface-btn-circle {
-  border-radius: 999px;
+.macro-key:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--text);
 }
 
-.macro-surface-btn-diamond {
-  border-radius: 12px;
-  transform: rotate(45deg);
+.macro-key:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.macro-surface-btn-diamond::before {
-  content: attr(data-label);
+.macro-key:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
-.macro-surface-btn-pill {
-  border-radius: 999px 12px 999px 12px;
+.macro-key-wide {
+  flex: 1.6 1 0;
 }
 
-.macro-surface-btn.used,
+.macro-key-xl {
+  flex: 2.4 1 0;
+}
+
+.macro-key-space {
+  flex: 7 1 0;
+}
+
 .macro-key.used {
   border-color: rgba(var(--accent-rgb), 0.42);
   color: var(--accent-glow);
   background: rgba(var(--accent-rgb), 0.1);
 }
 
-.macro-surface-btn.active,
 .macro-key.active {
   border-color: rgba(var(--accent-rgb), 0.62);
   color: #1f1f22;
   background: var(--accent);
   box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.18);
-}
-
-.macro-mouse-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.macro-keyboard-panel {
-  min-width: 0;
-  min-height: 280px;
-}
-
-.macro-keyboard-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.macro-keyboard-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.macro-key {
-  min-width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(18, 18, 20, 0.66);
-  color: #c7c2b8;
-  font-size: 12px;
-}
-
-.macro-key-wide {
-  min-width: 54px;
-}
-
-.macro-key-xl {
-  min-width: 96px;
 }
 
 .macro-script-preview {

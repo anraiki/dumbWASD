@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::{config, event::OutputAction};
+use super::{config, event::OutputAction, macros::SavedMacro};
 
 /// Top-level profile file structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,11 +222,37 @@ pub enum OutputTarget {
     MouseButton { code: u16 },
     /// A modifier chord such as Ctrl+L.
     Shortcut { modifiers: Vec<u16>, key: u16 },
+    /// A macro imported from the macro library.
+    ///
+    /// `definition` is a snapshot embedded into the profile at bind time -
+    /// like code loaded into memory. Editing or deleting the library macro
+    /// leaves this copy untouched until the binding is explicitly reimported;
+    /// `definition.id` records which library macro it was imported from.
+    ///
+    /// Playback is driven by a host-side runner, not by direct action
+    /// expansion, so `actions()` yields nothing for this variant.
+    Macro {
+        #[serde(default)]
+        mode: MacroBindMode,
+        definition: SavedMacro,
+    },
+}
+
+/// How a button press drives a bound macro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MacroBindMode {
+    /// Press starts playback; pressing again while playing stops it.
+    #[default]
+    Toggle,
+    /// Playback runs while the button is held and stops on release.
+    Hold,
 }
 
 impl OutputTarget {
     pub fn actions(&self, pressed: bool) -> Vec<OutputAction> {
         match self {
+            Self::Macro { .. } => Vec::new(),
             Self::Key { code } => vec![OutputAction::Key {
                 code: *code,
                 pressed,
@@ -312,8 +338,98 @@ fn default_multi_press_timeout_ms() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Behavior, BindingOutput, OutputTarget, PlaybackMode, Profile, Trigger};
+    use super::{Behavior, BindingOutput, MacroBindMode, OutputTarget, PlaybackMode, Profile, Trigger};
     use crate::core::event::OutputAction;
+
+    #[test]
+    fn parses_macro_mapping_and_defaults_to_toggle_mode() {
+        let content = r#"
+[profile]
+name = "Default"
+
+[[mappings]]
+from = 305
+
+[mappings.to]
+type = "macro"
+
+[mappings.to.definition]
+id = "burst-combo"
+
+[[mappings]]
+from = 306
+
+[mappings.to]
+type = "macro"
+mode = "hold"
+
+[mappings.to.definition]
+id = "spin-attack"
+"#;
+
+        let profile: Profile = toml::from_str(content).expect("macro mappings should parse");
+
+        assert!(matches!(
+            &profile.mappings[0].to,
+            OutputTarget::Macro { mode: MacroBindMode::Toggle, definition } if definition.id == "burst-combo"
+        ));
+        assert!(matches!(
+            &profile.mappings[1].to,
+            OutputTarget::Macro { mode: MacroBindMode::Hold, definition } if definition.id == "spin-attack"
+        ));
+        // Macro targets never expand to direct actions - playback is host-driven.
+        assert!(profile.mappings[0].to.actions(true).is_empty());
+        assert!(profile.mappings[0].to.actions(false).is_empty());
+    }
+
+    #[test]
+    fn round_trips_macro_mapping_with_embedded_definition() {
+        use crate::core::macros::{MacroTriggerMode, SavedMacro};
+        use crate::core::profile::{Mapping, ProfileMeta};
+        use super::MacroStep;
+
+        let profile = Profile {
+            profile: ProfileMeta {
+                name: "Default".to_string(),
+                device_name: None,
+            },
+            devices: Vec::new(),
+            mappings: vec![Mapping {
+                device: None,
+                from: 305,
+                to: OutputTarget::Macro {
+                    mode: MacroBindMode::Hold,
+                    definition: SavedMacro {
+                        id: "burst-combo".to_string(),
+                        name: "Burst Combo".to_string(),
+                        trigger_mode: MacroTriggerMode::HoldUntilRelease,
+                        lead_in_ms: 50,
+                        iterations: 3,
+                        pause_between_iterations_ms: 120,
+                        steps: vec![
+                            MacroStep::KeyDown { code: 17 },
+                            MacroStep::Delay { ms: 40 },
+                            MacroStep::KeyUp { code: 17 },
+                        ],
+                    },
+                },
+            }],
+        };
+
+        let content = toml::to_string_pretty(&profile).expect("profile should serialize");
+        let parsed: Profile = toml::from_str(&content).expect("profile should parse back");
+
+        match &parsed.mappings[0].to {
+            OutputTarget::Macro { mode, definition } => {
+                assert_eq!(*mode, MacroBindMode::Hold);
+                assert_eq!(definition.id, "burst-combo");
+                assert_eq!(definition.name, "Burst Combo");
+                assert_eq!(definition.iterations, 3);
+                assert_eq!(definition.steps.len(), 3);
+            }
+            other => panic!("expected embedded macro mapping, got {other:?}"),
+        }
+    }
 
     #[test]
     fn parses_legacy_profile_shape() {

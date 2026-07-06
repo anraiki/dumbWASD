@@ -8,7 +8,6 @@ export interface MacroFlowItem {
   label: string;
   secondary?: string;
   waitValue?: number;
-  width: number;
   active: boolean;
   draggable: boolean;
 }
@@ -17,7 +16,7 @@ interface MacroTimelineFlowProps {
   items: MacroFlowItem[];
   selectedItemIds: number[];
   onWaitChange: (itemId: number, value: number) => void;
-  onRemove: (itemId: number) => void;
+  onDeleteSelection: (itemIds: number[]) => void;
   onOrderChange: (orderedItemIds: number[]) => void;
   onSelectionChange: (selectedItemIds: number[]) => void;
 }
@@ -131,12 +130,35 @@ function pointInSurface(surface: HTMLElement, clientX: number, clientY: number) 
   };
 }
 
+const DirectionArrow: React.FC<{ direction: "down" | "up" }> = ({ direction }) => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    {direction === "down" ? (
+      <path
+        d="M8 2.5v11M3.8 9.3 8 13.5l4.2-4.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ) : (
+      <path
+        d="M8 13.5v-11M3.8 6.7 8 2.5l4.2 4.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    )}
+  </svg>
+);
+
 const FlowChip: React.FC<{
   item: MacroFlowItem;
   selected: boolean;
   dragging?: boolean;
   onWaitChange: (itemId: number, value: number) => void;
-  onRemove: (itemId: number) => void;
   onPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
   elementRef?: (element: HTMLDivElement | null) => void;
 }> = ({
@@ -144,7 +166,6 @@ const FlowChip: React.FC<{
   selected,
   dragging = false,
   onWaitChange,
-  onRemove,
   onPointerDown,
   elementRef,
 }) => {
@@ -160,55 +181,43 @@ const FlowChip: React.FC<{
   return (
     <div
       className={classes}
-      style={{ width: `${item.width}px` }}
       onPointerDown={onPointerDown}
       ref={elementRef}
       data-flow-item-id={item.itemId}
+      title={item.kind === "action" ? `${item.label} ${item.secondary ?? ""}` : undefined}
     >
-      {item.kind !== "meta" && item.itemId !== undefined ? (
-        <div className="macro-flow-chip-order">{item.itemId}</div>
-      ) : null}
-      <div className="macro-flow-chip-body">
-        {item.kind === "wait" ? (
-          <>
-            <span className="macro-flow-chip-label">Wait</span>
-            <label className="macro-flow-chip-input">
-              <input
-                type="number"
-                min="0"
-                step="10"
-                value={item.waitValue ?? 0}
-                onPointerDown={(event) => event.stopPropagation()}
-                onChange={(event) => {
-                  if (item.itemId === undefined) return;
-                  onWaitChange(item.itemId, Number(event.target.value));
-                }}
-              />
-              <span>ms</span>
-            </label>
-          </>
-        ) : item.kind === "meta" ? (
-          <>
-            <span className="macro-flow-chip-label">{item.label}</span>
-            <span className="macro-flow-chip-meta">{item.secondary ?? ""}</span>
-          </>
-        ) : (
-          <>
-            <span className="macro-flow-chip-input-name">{item.label}</span>
-            <span className="macro-flow-chip-direction">{item.secondary ?? ""}</span>
-          </>
-        )}
-      </div>
-      {item.kind !== "meta" && item.itemId !== undefined ? (
-        <button
-          className="macro-flow-chip-remove"
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onRemove(item.itemId!)}
-        >
-          ×
-        </button>
-      ) : null}
+      {item.kind === "wait" ? (
+        <>
+          <span className="macro-flow-chip-label">Wait</span>
+          <label className="macro-flow-chip-input">
+            <input
+              type="number"
+              min="0"
+              step="10"
+              value={item.waitValue ?? 0}
+              onPointerDown={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                if (item.itemId === undefined) return;
+                onWaitChange(item.itemId, Number(event.target.value));
+              }}
+            />
+            <span>ms</span>
+          </label>
+        </>
+      ) : item.kind === "meta" ? (
+        <>
+          <span className="macro-flow-chip-label">{item.label}</span>
+          <span className="macro-flow-chip-meta">{item.secondary ?? ""}</span>
+        </>
+      ) : (
+        <>
+          <span className="macro-flow-chip-arrow">
+            <DirectionArrow direction={item.secondary === "up" ? "up" : "down"} />
+          </span>
+          <span className="macro-flow-chip-input-name">{item.label}</span>
+          <span className="sr-only">{item.secondary ?? ""}</span>
+        </>
+      )}
     </div>
   );
 };
@@ -217,7 +226,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
   items,
   selectedItemIds,
   onWaitChange,
-  onRemove,
+  onDeleteSelection,
   onOrderChange,
   onSelectionChange,
 }) => {
@@ -234,14 +243,34 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
   const marqueeSelectionRef = useRef<MarqueeSelection | null>(null);
   const onOrderChangeRef = useRef(onOrderChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const onDeleteSelectionRef = useRef(onDeleteSelection);
   const selectedItemIdsRef = useRef(selectedItemIds);
 
   useEffect(() => {
     itemsRef.current = items;
     onOrderChangeRef.current = onOrderChange;
     onSelectionChangeRef.current = onSelectionChange;
+    onDeleteSelectionRef.current = onDeleteSelection;
     selectedItemIdsRef.current = selectedItemIds;
-  }, [items, onOrderChange, onSelectionChange, selectedItemIds]);
+  }, [items, onOrderChange, onSelectionChange, onDeleteSelection, selectedItemIds]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]")) return;
+
+      const selected = selectedItemIdsRef.current;
+      if (selected.length === 0) return;
+
+      event.preventDefault();
+      onDeleteSelectionRef.current(selected);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     activeDragRef.current = activeDrag;
@@ -554,7 +583,6 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
           item={item}
           selected={selectedSet.has(item.itemId)}
           onWaitChange={onWaitChange}
-          onRemove={onRemove}
           onPointerDown={(event) => handleChipPointerDown(item, event)}
           elementRef={(element) => setChipRef(item.itemId, element)}
         />
@@ -575,7 +603,6 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
           item={item}
           selected={selectedSet.has(item.itemId)}
           onWaitChange={onWaitChange}
-          onRemove={onRemove}
           onPointerDown={(event) => handleChipPointerDown(item, event)}
           elementRef={(element) => setChipRef(item.itemId, element)}
         />
@@ -588,8 +615,23 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
   if (items.length === 0) {
     return (
       <div className="macro-flow-root">
-        <div className="macro-flow-surface">
-          <div className="macro-empty">No timeline items recorded yet.</div>
+        <div className="macro-flow-surface macro-flow-surface-empty">
+          <div className="macro-flow-empty">
+            <svg viewBox="0 0 48 24" aria-hidden="true" focusable="false">
+              <path
+                d="M2 12h9l4-8 6 16 5-12 3 4h17"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <div className="macro-flow-empty-title">No events recorded yet</div>
+            <div className="macro-flow-empty-hint">
+              Click a key below, or arm <span className="macro-flow-empty-dot" /> Record to capture input live.
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -605,7 +647,6 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
               item={item}
               selected={false}
               onWaitChange={onWaitChange}
-              onRemove={onRemove}
             />
           ))}
           {renderDraggableItems()}
@@ -615,7 +656,6 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
               item={item}
               selected={false}
               onWaitChange={onWaitChange}
-              onRemove={onRemove}
             />
           ))}
         </div>
@@ -630,7 +670,7 @@ export function createMacroTimelineFlow(
   container: HTMLElement,
   options: {
     onWaitChange: (itemId: number, value: number) => void;
-    onRemove: (itemId: number) => void;
+    onDeleteSelection: (itemIds: number[]) => void;
     onOrderChange: (orderedItemIds: number[]) => void;
     onSelectionChange: (selectedItemIds: number[]) => void;
   }
@@ -643,7 +683,7 @@ export function createMacroTimelineFlow(
         items={items}
         selectedItemIds={selectedItemIds}
         onWaitChange={options.onWaitChange}
-        onRemove={options.onRemove}
+        onDeleteSelection={options.onDeleteSelection}
         onOrderChange={options.onOrderChange}
         onSelectionChange={options.onSelectionChange}
       />

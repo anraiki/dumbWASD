@@ -16,6 +16,20 @@ pub fn profiles_dir() -> Result<PathBuf> {
     Ok(cwd.join("profiles"))
 }
 
+/// Return the path of the macro library file.
+///
+/// Resolution order:
+/// 1. `$DUMBWASD_MACROS_FILE` environment variable
+/// 2. `./macros.toml` relative to the current working directory
+pub fn macros_file() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("DUMBWASD_MACROS_FILE") {
+        return Ok(PathBuf::from(path));
+    }
+
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    Ok(cwd.join("macros.toml"))
+}
+
 /// List all profile names (filenames without .toml extension) found in the profiles directory.
 pub fn list_profiles() -> Result<Vec<String>> {
     let dir = profiles_dir()?;

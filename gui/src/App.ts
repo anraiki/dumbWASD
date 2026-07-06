@@ -200,6 +200,11 @@ export async function createApp(container: HTMLElement) {
       state.getButtonGrid()?.setSelected(code);
       state.getDeviceSvgPreview()?.setSelected(code);
     },
+    onOpenMacroStudio: () => {
+      if (!state.getIsMacroMode()) {
+        macroBtn.click();
+      }
+    },
   });
 
   workspace = createWorkspace({

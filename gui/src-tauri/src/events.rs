@@ -1,6 +1,7 @@
+use crate::macro_runner::MacroRunner;
 use anyhow::Result;
 use dumbwasd_core::core::event::{InputEvent, OutputAction};
-use dumbwasd_core::core::profile::Mapping;
+use dumbwasd_core::core::profile::{MacroBindMode, Mapping, OutputTarget};
 use dumbwasd_core::devices::azeron;
 use dumbwasd_core::devices::azeron::JoystickState as AzeronJoystickState;
 use dumbwasd_core::platform::linux::LinuxInput;
@@ -9,6 +10,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
+use tauri::Manager;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
@@ -100,12 +102,14 @@ async fn monitor_devices(
     // Channel to merge events from all device streams
     let (tx, mut rx) = tokio::sync::mpsc::channel::<MonitoredEvent>(256);
     let output = if suppress_mapped_inputs && !legacy_mappings.is_empty() {
-        Some(Arc::new(Mutex::new(Box::new(
-            dumbwasd_core::platform::create_output_backend()?,
-        ) as Box<dyn OutputBackend>)))
+        Some(Arc::new(Mutex::new(
+            Box::new(dumbwasd_core::platform::create_output_backend()?) as Box<dyn OutputBackend>,
+        )))
     } else {
         None
     };
+
+    let macro_runner = app.state::<MacroRunner>().inner().clone();
 
     // Spawn a reader task for each device path
     for path in &device_paths {
@@ -113,8 +117,11 @@ async fn monitor_devices(
         let path = path.clone();
         let output = output.clone();
         let legacy_mappings = legacy_mappings.clone();
+        let macro_runner = macro_runner.clone();
         tokio::spawn(async move {
-            if let Err(e) = read_device_events(&path, tx, legacy_mappings, output).await {
+            if let Err(e) =
+                read_device_events(&path, tx, legacy_mappings, output, macro_runner).await
+            {
                 tracing::warn!("device {path} stopped: {e:#}");
             }
         });
@@ -169,6 +176,7 @@ async fn read_device_events(
     tx: tokio::sync::mpsc::Sender<MonitoredEvent>,
     legacy_mappings: Vec<Mapping>,
     output: Option<SharedOutput>,
+    macro_runner: MacroRunner,
 ) -> Result<()> {
     let mut input = if output.is_some() {
         LinuxInput::new()
@@ -207,10 +215,39 @@ async fn read_device_events(
                 }
 
                 if let Some(output) = &output {
-                    let actions = resolve_legacy_mapping(code, pressed, &legacy_mappings)
-                        .unwrap_or_else(|| vec![passthrough_button_action(code, pressed)]);
-
-                    emit_output_actions(output, &actions).await?;
+                    match legacy_mappings.iter().find(|mapping| mapping.from == code) {
+                        // Macro mappings suppress the input and drive playback.
+                        // The frontend emit path is inactive while runtime remap
+                        // runs here, so this is the only trigger.
+                        Some(Mapping {
+                            to: OutputTarget::Macro { mode, definition },
+                            ..
+                        }) => {
+                            let result = match mode {
+                                MacroBindMode::Toggle if pressed => {
+                                    macro_runner.toggle(definition.clone())
+                                }
+                                MacroBindMode::Toggle => Ok(false),
+                                MacroBindMode::Hold if pressed => {
+                                    macro_runner.start(definition.clone())
+                                }
+                                MacroBindMode::Hold => macro_runner.stop(&definition.id),
+                            };
+                            if let Err(e) = result {
+                                tracing::warn!("macro '{}' trigger failed: {e}", definition.id);
+                            }
+                        }
+                        Some(mapping) => {
+                            emit_output_actions(output, &mapping.to.actions(pressed)).await?;
+                        }
+                        None => {
+                            emit_output_actions(
+                                output,
+                                &[passthrough_button_action(code, pressed)],
+                            )
+                            .await?;
+                        }
+                    }
                 }
             }
             InputEvent::Axis { axis, value } => {
@@ -240,7 +277,8 @@ async fn read_device_events(
                 }
 
                 if let Some(output) = &output {
-                    emit_output_actions(output, &[OutputAction::RelativeAxis { axis, value }]).await?;
+                    emit_output_actions(output, &[OutputAction::RelativeAxis { axis, value }])
+                        .await?;
                 }
             }
             InputEvent::Sync => {}
@@ -251,12 +289,6 @@ async fn read_device_events(
 }
 
 type SharedOutput = Arc<Mutex<Box<dyn OutputBackend>>>;
-
-fn resolve_legacy_mapping(code: u16, pressed: bool, mappings: &[Mapping]) -> Option<Vec<OutputAction>> {
-    let mapping = mappings.iter().find(|mapping| mapping.from == code)?;
-
-    Some(mapping.to.actions(pressed))
-}
 
 fn passthrough_button_action(code: u16, pressed: bool) -> OutputAction {
     if is_mouse_button_code(code) {

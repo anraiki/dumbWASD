@@ -1,4 +1,6 @@
-export type MappingTargetType = "key" | "mouse_button" | "shortcut";
+import type { SavedMacro } from "./macro-types";
+
+export type MappingTargetType = "key" | "mouse_button" | "shortcut" | "macro";
 
 export type MappingTarget =
   | {
@@ -9,6 +11,18 @@ export type MappingTarget =
       type: "shortcut";
       modifiers: number[];
       key: number;
+    }
+  | {
+      type: "macro";
+      /** Treated as "toggle" when absent. */
+      mode?: "toggle" | "hold";
+      /**
+       * Snapshot embedded into the profile at bind time. Playback uses this
+       * copy; editing or deleting the library macro leaves it untouched
+       * until the binding is reimported. `definition.id` records which
+       * library macro it was imported from.
+       */
+      definition: SavedMacro;
     };
 
 export type MappingTargetOption = Extract<MappingTarget, { type: "key" | "mouse_button" }> & {
@@ -163,6 +177,10 @@ export function getMappingTargetLabel(target: MappingTarget | null | undefined):
     return "None";
   }
 
+  if (target.type === "macro") {
+    return `Macro: ${target.definition.name || target.definition.id}`;
+  }
+
   if (target.type === "shortcut") {
     const parts = normalizeShortcutModifiers(target.modifiers).map((code) => getInputCodeLabel(code));
     parts.push(getInputCodeLabel(target.key));
@@ -174,7 +192,13 @@ export function getMappingTargetLabel(target: MappingTarget | null | undefined):
 
 export function isSupportedMappingTarget(
   target:
-    | { type: string; code?: number; modifiers?: number[]; key?: number }
+    | {
+        type: string;
+        code?: number;
+        modifiers?: number[];
+        key?: number;
+        definition?: { id?: unknown } | null;
+      }
     | null
     | undefined,
 ): target is MappingTarget {
@@ -183,6 +207,14 @@ export function isSupportedMappingTarget(
   }
 
   if ((target.type === "key" || target.type === "mouse_button") && Number.isFinite(target.code)) {
+    return true;
+  }
+
+  if (
+    target.type === "macro"
+    && typeof target.definition?.id === "string"
+    && target.definition.id.length > 0
+  ) {
     return true;
   }
 
