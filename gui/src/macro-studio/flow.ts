@@ -36,6 +36,15 @@ export function initTimelineFlow(flowHost: HTMLElement, ctx: MacroFlowCtx): Macr
       state.codeStatus = "Generated from macro builder";
       refresh();
     },
+    onWaitAdjust: (itemId, deltaMs) => {
+      const timeline = macroTimeline.getTimeline();
+      const item = timeline.find((entry) => entry.id === itemId);
+      if (!item || (item.kind !== "wait" && item.kind !== "rumble")) return;
+      item.durationMs = Math.max(0, item.durationMs + deltaMs);
+      state.codeDirty = false;
+      state.codeStatus = "Generated from macro builder";
+      refresh();
+    },
     onDeleteSelection: (itemIds) => {
       const idSet = new Set(itemIds);
       macroTimeline.setTimeline(macroTimeline.getTimeline().filter((item) => !idSet.has(item.id)));

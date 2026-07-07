@@ -16,6 +16,8 @@ interface MacroTimelineFlowProps {
   items: MacroFlowItem[];
   selectedItemIds: number[];
   onWaitChange: (itemId: number, value: number) => void;
+  /** Adjust a timed step relative to its live value (stale-render safe). */
+  onWaitAdjust: (itemId: number, deltaMs: number) => void;
   onDeleteSelection: (itemIds: number[]) => void;
   onOrderChange: (orderedItemIds: number[]) => void;
   onSelectionChange: (selectedItemIds: number[]) => void;
@@ -130,6 +132,25 @@ function pointInSurface(surface: HTMLElement, clientX: number, clientY: number) 
   };
 }
 
+const TimedStepIcon: React.FC<{ kind: "wait" | "rumble" }> = ({ kind }) => (
+  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    {kind === "wait" ? (
+      <path
+        d="M5.5 3.5v9M10.5 3.5v9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    ) : (
+      <>
+        <rect x="5.5" y="3" width="5" height="10" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M2.5 5.5c-.8 1.6-.8 3.4 0 5M13.5 5.5c.8 1.6.8 3.4 0 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    )}
+  </svg>
+);
+
 const DirectionArrow: React.FC<{ direction: "down" | "up" }> = ({ direction }) => (
   <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
     {direction === "down" ? (
@@ -159,6 +180,7 @@ const FlowChip: React.FC<{
   selected: boolean;
   dragging?: boolean;
   onWaitChange: (itemId: number, value: number) => void;
+  onWaitAdjust: (itemId: number, deltaMs: number) => void;
   onPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
   elementRef?: (element: HTMLDivElement | null) => void;
 }> = ({
@@ -166,6 +188,7 @@ const FlowChip: React.FC<{
   selected,
   dragging = false,
   onWaitChange,
+  onWaitAdjust,
   onPointerDown,
   elementRef,
 }) => {
@@ -188,7 +211,9 @@ const FlowChip: React.FC<{
     >
       {item.kind === "wait" || item.kind === "rumble" ? (
         <>
-          <span className="macro-flow-chip-label">{item.label}</span>
+          <span className="macro-flow-chip-icon" title={item.label}>
+            <TimedStepIcon kind={item.kind} />
+          </span>
           <label className="macro-flow-chip-input">
             <input
               type="number"
@@ -201,8 +226,35 @@ const FlowChip: React.FC<{
                 onWaitChange(item.itemId, Number(event.target.value));
               }}
             />
-            <span>ms</span>
+            <span className="macro-flow-chip-spin">
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Increase ${item.label} duration`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  if (item.itemId === undefined) return;
+                  onWaitAdjust(item.itemId, 10);
+                }}
+              >
+                ▴
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Decrease ${item.label} duration`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  if (item.itemId === undefined) return;
+                  onWaitAdjust(item.itemId, -10);
+                }}
+              >
+                ▾
+              </button>
+            </span>
+            <span className="macro-flow-chip-unit">ms</span>
           </label>
+          <span className="sr-only">{item.label}</span>
         </>
       ) : item.kind === "meta" ? (
         <>
@@ -226,6 +278,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
   items,
   selectedItemIds,
   onWaitChange,
+  onWaitAdjust,
   onDeleteSelection,
   onOrderChange,
   onSelectionChange,
@@ -583,6 +636,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
           item={item}
           selected={selectedSet.has(item.itemId)}
           onWaitChange={onWaitChange}
+          onWaitAdjust={onWaitAdjust}
           onPointerDown={(event) => handleChipPointerDown(item, event)}
           elementRef={(element) => setChipRef(item.itemId, element)}
         />
@@ -603,6 +657,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
           item={item}
           selected={selectedSet.has(item.itemId)}
           onWaitChange={onWaitChange}
+          onWaitAdjust={onWaitAdjust}
           onPointerDown={(event) => handleChipPointerDown(item, event)}
           elementRef={(element) => setChipRef(item.itemId, element)}
         />
@@ -647,6 +702,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
               item={item}
               selected={false}
               onWaitChange={onWaitChange}
+              onWaitAdjust={onWaitAdjust}
             />
           ))}
           {renderDraggableItems()}
@@ -656,6 +712,7 @@ const MacroTimelineFlow: React.FC<MacroTimelineFlowProps> = ({
               item={item}
               selected={false}
               onWaitChange={onWaitChange}
+              onWaitAdjust={onWaitAdjust}
             />
           ))}
         </div>
@@ -670,6 +727,7 @@ export function createMacroTimelineFlow(
   container: HTMLElement,
   options: {
     onWaitChange: (itemId: number, value: number) => void;
+    onWaitAdjust: (itemId: number, deltaMs: number) => void;
     onDeleteSelection: (itemIds: number[]) => void;
     onOrderChange: (orderedItemIds: number[]) => void;
     onSelectionChange: (selectedItemIds: number[]) => void;
@@ -683,6 +741,7 @@ export function createMacroTimelineFlow(
         items={items}
         selectedItemIds={selectedItemIds}
         onWaitChange={options.onWaitChange}
+        onWaitAdjust={options.onWaitAdjust}
         onDeleteSelection={options.onDeleteSelection}
         onOrderChange={options.onOrderChange}
         onSelectionChange={options.onSelectionChange}

@@ -1433,7 +1433,7 @@ html, body {
 
 .macro-flow-gap {
   width: 0;
-  height: 32px;
+  height: 28px;
   flex: 0 0 auto;
   border-radius: 10px;
   position: relative;
@@ -1462,13 +1462,13 @@ html, body {
 }
 
 .macro-flow-chip {
-  height: 32px;
+  height: 28px;
   flex: 0 0 auto;
   display: inline-flex;
-  gap: 7px;
+  gap: 6px;
   align-items: center;
-  padding: 0 10px;
-  border-radius: 7px;
+  padding: 0 8px;
+  border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(28, 28, 30, 0.92);
   color: var(--text);
@@ -1545,21 +1545,62 @@ html, body {
 .macro-flow-chip-input {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.macro-flow-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #a5a19a;
+}
+
+.macro-flow-chip-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.macro-flow-chip-rumble .macro-flow-chip-icon {
+  color: rgba(var(--accent-rgb), 0.92);
 }
 
 .macro-flow-chip-input input {
-  width: 46px;
-  padding: 2px 6px;
+  width: 38px;
+  padding: 1px 2px;
   font-size: 12px;
   text-align: center;
   background: rgba(20, 20, 22, 0.82);
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 7px;
+  border-radius: 2px;
   outline: none;
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+.macro-flow-chip-spin {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.macro-flow-chip-spin button {
+  width: 12px;
+  height: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #8f8b84;
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.macro-flow-chip-spin button:hover {
+  color: var(--text);
 }
 
 .macro-flow-chip-input input::-webkit-outer-spin-button,
@@ -1568,10 +1609,10 @@ html, body {
   margin: 0;
 }
 
-.macro-flow-chip-input span {
+.macro-flow-chip-unit {
   font-size: 10px;
   color: #bbb5ab;
-  text-transform: uppercase;
+  text-transform: lowercase;
 }
 
 .macro-flow-chip-meta {
