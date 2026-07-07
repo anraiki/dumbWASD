@@ -30,6 +30,7 @@ export function applySavedMacro(ctx: MacroLibraryCtx, saved: SavedMacro) {
 
   state.triggerMode = saved.trigger_mode === "hold_until_release" ? "hold" : "execute";
   state.leadInMs = saved.lead_in_ms;
+  state.keyDelayMs = saved.key_delay_ms ?? 10;
   state.iterations = Math.max(1, saved.iterations);
   state.pauseBetweenIterationsMs = saved.pause_between_iterations_ms;
   macroTimeline.setTimeline(stepsToTimeline(saved.steps, macroTimeline.nextId));
@@ -65,6 +66,7 @@ export async function saveCurrentMacro(ctx: MacroLibraryCtx) {
     lead_in_ms: state.leadInMs,
     iterations: state.iterations,
     pause_between_iterations_ms: state.pauseBetweenIterationsMs,
+    key_delay_ms: state.keyDelayMs,
     steps: timelineToSteps(timeline),
   };
 

@@ -95,6 +95,7 @@ export function createMacroStudio(): MacroStudio {
     refs.deleteMacroBtn.disabled = !state.savedMacros.some((entry) => entry.id === state.currentMacroId);
 
     refs.leadInInput.value = String(state.leadInMs);
+    refs.keyDelayInput.value = String(state.keyDelayMs);
     refs.iterationsInput.value = String(state.iterations);
     refs.pauseInput.value = String(state.pauseBetweenIterationsMs);
 
@@ -106,9 +107,12 @@ export function createMacroStudio(): MacroStudio {
     refs.recordBtn.title = recording ? "Stop recording" : "Start recording";
     refs.recordBtn.setAttribute("aria-label", recording ? "Stop recording" : "Start recording");
 
+    refs.cleanBtn.disabled = timeline.length === 0 || playbackRunning;
+
+    refs.insertWaitBtn.disabled = playbackRunning;
+    refs.insertRumbleBtn.disabled = playbackRunning;
+
     refs.clearBtn.disabled = timeline.length === 0 && playbackLog.length === 0;
-    refs.clearBtn.title = "Clear macro";
-    refs.clearBtn.setAttribute("aria-label", "Clear macro");
 
     refs.playBtn.classList.toggle("active", playbackRunning);
     refs.playBtn.disabled = playbackRunning || recording || timeline.length === 0;

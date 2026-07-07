@@ -5,6 +5,7 @@ export type ActiveTab = "visual" | "code";
 
 export interface MacroStudioState {
   leadInMs: number;
+  keyDelayMs: number;
   iterations: number;
   pauseBetweenIterationsMs: number;
   triggerMode: TriggerMode;
@@ -24,6 +25,7 @@ export interface MacroStudioState {
 export function createInitialState(): MacroStudioState {
   return {
     leadInMs: 0,
+    keyDelayMs: 10,
     iterations: 1,
     pauseBetweenIterationsMs: 0,
     triggerMode: "execute",

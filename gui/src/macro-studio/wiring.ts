@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { MacroTimelineHandle } from "../macro-timeline";
 import { applySavedMacro, deleteCurrentMacro, saveCurrentMacro } from "./library";
-import { generateScript } from "./script";
 import type { MacroStudioState } from "./state";
 import type { MacroStudioRefs } from "./template";
-import { clampNumber, copyToClipboard } from "./utils";
+import { clampNumber } from "./utils";
+import { wirePanelListeners } from "./wiring-panels";
 
 export interface MacroStudioWiringCtx {
   host: HTMLElement;
@@ -21,6 +21,11 @@ export function wireEventListeners(ctx: MacroStudioWiringCtx) {
 
   refs.leadInInput.addEventListener("input", () => {
     state.leadInMs = clampNumber(refs.leadInInput.value, 0, 0);
+    refresh();
+  });
+
+  refs.keyDelayInput.addEventListener("input", () => {
+    state.keyDelayMs = clampNumber(refs.keyDelayInput.value, 0, 10);
     refresh();
   });
 
@@ -42,6 +47,9 @@ export function wireEventListeners(ctx: MacroStudioWiringCtx) {
       switch (stepperBtn.dataset.stepperField) {
         case "lead":
           state.leadInMs = Math.max(0, state.leadInMs + delta);
+          break;
+        case "keydelay":
+          state.keyDelayMs = Math.max(0, state.keyDelayMs + delta);
           break;
         case "iterations":
           state.iterations = Math.max(1, state.iterations + delta);
@@ -124,6 +132,33 @@ export function wireEventListeners(ctx: MacroStudioWiringCtx) {
     macroTimeline.startRecording();
   });
 
+  const appendTimedStep = (kind: "wait" | "rumble", durationMs: number) => {
+    if (macroTimeline.isPlaybackRunning()) return;
+    macroTimeline.setTimeline([
+      ...macroTimeline.getTimeline(),
+      { id: macroTimeline.nextId(), kind, durationMs },
+    ]);
+    state.codeDirty = false;
+    state.codeStatus = "Generated from macro builder";
+    macroTimeline.appendLog(`Appended ${kind} ${durationMs}ms.`);
+    refresh();
+  };
+
+  refs.insertWaitBtn.addEventListener("click", () => appendTimedStep("wait", 100));
+  refs.insertRumbleBtn.addEventListener("click", () => appendTimedStep("rumble", 250));
+
+  refs.cleanBtn.addEventListener("click", () => {
+    const count = macroTimeline.getTimeline().length;
+    if (count === 0 || macroTimeline.isPlaybackRunning()) return;
+
+    macroTimeline.setTimeline([]);
+    state.selectedItemIds = new Set();
+    state.codeDirty = false;
+    state.codeStatus = "Generated from macro builder";
+    macroTimeline.appendLog(`Cleaned ${count} step${count === 1 ? "" : "s"} from the macro.`);
+    refresh();
+  });
+
   refs.clearBtn.addEventListener("click", () => {
     if (macroTimeline.getTimeline().length === 0 && macroTimeline.getPlaybackLog().length === 0) return;
     if (!window.confirm("Clear the entire macro timeline and playback log?")) return;
@@ -142,6 +177,7 @@ export function wireEventListeners(ctx: MacroStudioWiringCtx) {
       leadInMs: state.leadInMs,
       iterations: state.iterations,
       pauseBetweenIterationsMs: state.pauseBetweenIterationsMs,
+      keyDelayMs: state.keyDelayMs,
     });
   });
 
@@ -175,54 +211,5 @@ export function wireEventListeners(ctx: MacroStudioWiringCtx) {
     }
   });
 
-  refs.visualTabBtn.addEventListener("click", () => {
-    state.activeTab = "visual";
-    refresh();
-  });
-
-  refs.codeTabBtn.addEventListener("click", () => {
-    state.activeTab = "code";
-    refresh();
-  });
-
-  refs.logBtn.addEventListener("click", () => {
-    state.playbackLogOpen = true;
-    refresh();
-  });
-
-  refs.playbackModalCloseBtn.addEventListener("click", () => {
-    state.playbackLogOpen = false;
-    refresh();
-  });
-
-  refs.playbackModal.addEventListener("click", (event) => {
-    if (event.target === refs.playbackModal) {
-      state.playbackLogOpen = false;
-      refresh();
-    }
-  });
-
-  refs.codeEditor.addEventListener("input", () => {
-    state.codeDraft = refs.codeEditor.value ?? "";
-    state.codeDirty = true;
-    state.codeStatus = "Manual edits ready to share";
-    refresh();
-  });
-
-  refs.resetCodeBtn.addEventListener("click", () => {
-    state.codeDirty = false;
-    state.codeDraft = generateScript(macroTimeline.getTimeline(), state);
-    state.codeStatus = "Code reset from macro builder";
-    refresh();
-  });
-
-  refs.copyCodeBtn.addEventListener("click", async () => {
-    try {
-      await copyToClipboard(refs.codeEditor.value ?? state.codeDraft);
-      state.codeStatus = "Code copied to clipboard";
-    } catch {
-      state.codeStatus = "Clipboard copy failed";
-    }
-    refresh();
-  });
+  wirePanelListeners(ctx);
 }

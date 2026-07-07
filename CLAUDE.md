@@ -25,7 +25,7 @@ Linux-only input remapper: evdev in, uinput out. Cargo workspace: `dumbwasd-core
 ### Burn-down list (over target as of 2026-07, post first split pass)
 
 `macro-flow-prototype.tsx` 703 · `react-flow-editor.tsx` 689 ·
-`core/profile.rs` 591 · `profile-manager.ts` 495 · `devices/registry.rs` 416 ·
+`profile-manager.ts` 495 · `devices/registry.rs` 416 ·
 `src-tauri/events.rs` 400 · `input-codes.ts` 350 ·
 `platform/linux/input.rs` 335 · `keyboard-joystick.ts` 324 ·
 `monitoring/monitor.ts` 316 · `devices/azeron/key_codes.rs` 304 (data tables) ·

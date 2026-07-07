@@ -1,16 +1,20 @@
 import type { MacroStudioState } from "./state";
-import { toolbarIcon } from "./utils";
+import { buildToolbar } from "./template-toolbar";
 
 export interface MacroStudioRefs {
   librarySelect: HTMLSelectElement;
   saveMacroBtn: HTMLButtonElement;
   deleteMacroBtn: HTMLButtonElement;
   leadInInput: HTMLInputElement;
+  keyDelayInput: HTMLInputElement;
   iterationsInput: HTMLInputElement;
   pauseInput: HTMLInputElement;
   holdModeBtn: HTMLButtonElement;
   executeModeBtn: HTMLButtonElement;
+  insertWaitBtn: HTMLButtonElement;
+  insertRumbleBtn: HTMLButtonElement;
   recordBtn: HTMLButtonElement;
+  cleanBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
   playBtn: HTMLButtonElement;
   stopBtn: HTMLButtonElement;
@@ -35,111 +39,7 @@ export interface MacroStudioRefs {
 export function buildTemplate(state: MacroStudioState): string {
   return `
       <div class="macro-sequencer">
-        <section class="macro-command-bar macro-card">
-          <div class="macro-toolbar-group">
-            <span class="macro-toolbar-label">Macro</span>
-            <div class="macro-library">
-              <select id="macro-library-select" class="macro-library-select">
-                <option value="">New macro…</option>
-              </select>
-              <button id="macro-save-btn" class="btn btn-action macro-library-btn" type="button">Save</button>
-              <button id="macro-delete-btn" class="btn btn-action macro-library-btn" type="button">Delete</button>
-            </div>
-          </div>
-
-          <div class="macro-toolbar-group">
-            <span class="macro-toolbar-label">Playback Mode</span>
-            <div class="macro-mode-switch">
-              <button id="macro-mode-hold" class="macro-mode-btn" type="button">Hold until release</button>
-              <button id="macro-mode-execute" class="macro-mode-btn active" type="button">Execute at once</button>
-            </div>
-          </div>
-
-          <div class="macro-toolbar-group">
-            <span class="macro-toolbar-label">Lead-in</span>
-            <div class="macro-stepper">
-              <button class="macro-stepper-btn" type="button" data-stepper-field="lead" data-stepper-delta="-10" aria-label="Decrease lead-in">&minus;</button>
-              <label class="macro-stepper-value">
-                <input id="macro-lead-in" type="number" min="0" step="10" value="${state.leadInMs}" />
-                <span>ms</span>
-              </label>
-              <button class="macro-stepper-btn" type="button" data-stepper-field="lead" data-stepper-delta="10" aria-label="Increase lead-in">+</button>
-            </div>
-          </div>
-
-          <div class="macro-toolbar-group">
-            <span class="macro-toolbar-label">Iterations</span>
-            <div class="macro-stepper">
-              <button class="macro-stepper-btn" type="button" data-stepper-field="iterations" data-stepper-delta="-1" aria-label="Decrease iterations">&minus;</button>
-              <label class="macro-stepper-value">
-                <input id="macro-iterations" type="number" min="1" step="1" value="${state.iterations}" />
-              </label>
-              <button class="macro-stepper-btn" type="button" data-stepper-field="iterations" data-stepper-delta="1" aria-label="Increase iterations">+</button>
-            </div>
-          </div>
-
-          <div class="macro-toolbar-group">
-            <span class="macro-toolbar-label">Pause / Loop</span>
-            <div class="macro-stepper">
-              <button class="macro-stepper-btn" type="button" data-stepper-field="pause" data-stepper-delta="-10" aria-label="Decrease pause between loops">&minus;</button>
-              <label class="macro-stepper-value">
-                <input id="macro-pause" type="number" min="0" step="10" value="${state.pauseBetweenIterationsMs}" />
-                <span>ms</span>
-              </label>
-              <button class="macro-stepper-btn" type="button" data-stepper-field="pause" data-stepper-delta="10" aria-label="Increase pause between loops">+</button>
-            </div>
-          </div>
-
-          <div class="macro-toolbar-group macro-transport-group">
-            <span class="macro-toolbar-label">Transport</span>
-            <div class="macro-transport">
-              <button
-                id="macro-record-btn"
-                class="macro-icon-btn macro-record-btn"
-                type="button"
-                title="Start recording"
-                aria-label="Start recording"
-              >
-                <span class="macro-record-glyph" aria-hidden="true"></span>
-                <span class="sr-only">Start recording</span>
-              </button>
-              <button
-                id="macro-play-btn"
-                class="macro-icon-btn"
-                type="button"
-                title="Test run"
-                aria-label="Test run"
-              >
-                ${toolbarIcon("play")}
-                <span class="sr-only">Test run</span>
-              </button>
-              <button
-                id="macro-stop-btn"
-                class="macro-icon-btn"
-                type="button"
-                title="Stop"
-                aria-label="Stop"
-              >
-                ${toolbarIcon("stop")}
-                <span class="sr-only">Stop</span>
-              </button>
-              <button
-                id="macro-clear-btn"
-                class="macro-icon-btn"
-                type="button"
-                title="Clear macro"
-                aria-label="Clear macro"
-              >
-                ${toolbarIcon("trash")}
-                <span class="sr-only">Clear macro</span>
-              </button>
-              <span class="macro-transport-divider" aria-hidden="true"></span>
-              <button id="macro-script-test-btn" class="btn btn-action macro-script-test-btn" type="button">
-                Run 10s Test
-              </button>
-            </div>
-          </div>
-        </section>
+        ${buildToolbar(state)}
 
         <div class="macro-tab-row">
           <div class="macro-tab-strip">
@@ -205,11 +105,15 @@ export function collectRefs(host: HTMLElement): MacroStudioRefs {
     saveMacroBtn: host.querySelector<HTMLButtonElement>("#macro-save-btn")!,
     deleteMacroBtn: host.querySelector<HTMLButtonElement>("#macro-delete-btn")!,
     leadInInput: host.querySelector<HTMLInputElement>("#macro-lead-in")!,
+    keyDelayInput: host.querySelector<HTMLInputElement>("#macro-key-delay")!,
     iterationsInput: host.querySelector<HTMLInputElement>("#macro-iterations")!,
     pauseInput: host.querySelector<HTMLInputElement>("#macro-pause")!,
     holdModeBtn: host.querySelector<HTMLButtonElement>("#macro-mode-hold")!,
     executeModeBtn: host.querySelector<HTMLButtonElement>("#macro-mode-execute")!,
+    insertWaitBtn: host.querySelector<HTMLButtonElement>("#macro-insert-wait-btn")!,
+    insertRumbleBtn: host.querySelector<HTMLButtonElement>("#macro-insert-rumble-btn")!,
     recordBtn: host.querySelector<HTMLButtonElement>("#macro-record-btn")!,
+    cleanBtn: host.querySelector<HTMLButtonElement>("#macro-clean-btn")!,
     clearBtn: host.querySelector<HTMLButtonElement>("#macro-clear-btn")!,
     playBtn: host.querySelector<HTMLButtonElement>("#macro-play-btn")!,
     stopBtn: host.querySelector<HTMLButtonElement>("#macro-stop-btn")!,

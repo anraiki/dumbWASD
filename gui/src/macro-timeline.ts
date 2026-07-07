@@ -12,12 +12,20 @@ export interface MacroWaitItem {
   durationMs: number;
 }
 
-export type MacroTimelineItem = MacroActionItem | MacroWaitItem;
+export interface MacroRumbleItem {
+  id: number;
+  kind: "rumble";
+  durationMs: number;
+}
+
+export type MacroTimelineItem = MacroActionItem | MacroWaitItem | MacroRumbleItem;
 
 export interface PlaybackConfig {
   leadInMs: number;
   iterations: number;
   pauseBetweenIterationsMs: number;
+  /** Delay inserted after each input action during playback. */
+  keyDelayMs: number;
 }
 
 export interface MacroTimelineHandle {
@@ -45,7 +53,6 @@ export function createMacroTimeline(options: {
   let recording = false;
   let playbackRunning = false;
   let activePlaybackItemId: number | null = null;
-  let lastRecordedAt = 0;
   let nextItemId = 1;
   let timeline: MacroTimelineItem[] = [];
   let playbackLog: string[] = [];
@@ -65,7 +72,7 @@ export function createMacroTimeline(options: {
 
   function totalDurationMs(config: PlaybackConfig) {
     const perIteration = timeline.reduce(
-      (sum, item) => sum + (item.kind === "wait" ? item.durationMs : 0),
+      (sum, item) => sum + (item.kind === "action" ? config.keyDelayMs : item.durationMs),
       0,
     );
     return (
@@ -83,15 +90,8 @@ export function createMacroTimeline(options: {
   function handleInputEvent(code: number, pressed: boolean) {
     if (!recording) return;
 
-    const now = performance.now();
-    if (timeline.some((item) => item.kind === "action")) {
-      timeline = timeline.concat({
-        id: nextId(),
-        kind: "wait",
-        durationMs: Math.max(0, Math.round(now - lastRecordedAt)),
-      });
-    }
-
+    // Only the inputs are captured - real time gaps are not recorded as
+    // waits. Playback spacing comes from the global key delay instead.
     timeline = timeline.concat({
       id: nextId(),
       kind: "action",
@@ -100,7 +100,6 @@ export function createMacroTimeline(options: {
       direction: pressed ? "down" : "up",
     });
 
-    lastRecordedAt = now;
     appendLog(`Captured ${options.normalizeInput(code)} ${pressed ? "down" : "up"}`);
     options.onRecorded();
     options.onUpdate();
@@ -109,7 +108,6 @@ export function createMacroTimeline(options: {
   function startRecording() {
     if (!options.getIsMonitoringActive() || playbackRunning) return;
     recording = true;
-    lastRecordedAt = performance.now();
     appendLog("Recording started.");
     options.onUpdate();
   }
@@ -136,14 +134,15 @@ export function createMacroTimeline(options: {
     let elapsed = config.leadInMs;
     for (let iteration = 0; iteration < config.iterations; iteration += 1) {
       for (const item of timeline) {
-        if (item.kind === "wait") {
+        if (item.kind === "wait" || item.kind === "rumble") {
           elapsed += item.durationMs;
-          const waitAt = elapsed;
+          const stepAt = elapsed;
+          const verb = item.kind === "rumble" ? "rumble" : "wait";
           playbackTimers.push(window.setTimeout(() => {
             activePlaybackItemId = item.id;
-            appendLog(`[${waitAt}ms] wait ${item.durationMs}ms • loop ${iteration + 1}`);
+            appendLog(`[${stepAt}ms] ${verb} ${item.durationMs}ms • loop ${iteration + 1}`);
             options.onUpdate();
-          }, waitAt));
+          }, stepAt));
           continue;
         }
 
@@ -153,6 +152,7 @@ export function createMacroTimeline(options: {
           appendLog(`[${actionAt}ms] ${item.input} ${item.direction} • loop ${iteration + 1}`);
           options.onUpdate();
         }, actionAt));
+        elapsed += config.keyDelayMs;
       }
 
       if (iteration < config.iterations - 1 && config.pauseBetweenIterationsMs > 0) {

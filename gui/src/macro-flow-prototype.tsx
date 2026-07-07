@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 export interface MacroFlowItem {
   key: string;
   itemId?: number;
-  kind: "action" | "wait" | "meta";
+  kind: "action" | "wait" | "rumble" | "meta";
   label: string;
   secondary?: string;
   waitValue?: number;
@@ -186,9 +186,9 @@ const FlowChip: React.FC<{
       data-flow-item-id={item.itemId}
       title={item.kind === "action" ? `${item.label} ${item.secondary ?? ""}` : undefined}
     >
-      {item.kind === "wait" ? (
+      {item.kind === "wait" || item.kind === "rumble" ? (
         <>
-          <span className="macro-flow-chip-label">Wait</span>
+          <span className="macro-flow-chip-label">{item.label}</span>
           <label className="macro-flow-chip-input">
             <input
               type="number"

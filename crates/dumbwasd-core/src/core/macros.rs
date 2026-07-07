@@ -32,6 +32,9 @@ pub struct SavedMacro {
     pub iterations: u32,
     #[serde(default)]
     pub pause_between_iterations_ms: u32,
+    /// Delay inserted between consecutive input steps during playback.
+    #[serde(default = "default_key_delay_ms")]
+    pub key_delay_ms: u32,
     #[serde(default)]
     pub steps: Vec<MacroStep>,
 }
@@ -96,6 +99,10 @@ fn default_iterations() -> u32 {
     1
 }
 
+fn default_key_delay_ms() -> u32 {
+    10
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MacroLibrary, MacroTriggerMode, SavedMacro};
@@ -109,6 +116,7 @@ mod tests {
             lead_in_ms: 50,
             iterations: 3,
             pause_between_iterations_ms: 120,
+            key_delay_ms: 10,
             steps: vec![
                 MacroStep::KeyDown { code: 30 },
                 MacroStep::Delay { ms: 40 },
@@ -153,6 +161,7 @@ code = 35
         assert_eq!(entry.trigger_mode, MacroTriggerMode::ExecuteAtOnce);
         assert_eq!(entry.iterations, 1);
         assert_eq!(entry.lead_in_ms, 0);
+        assert_eq!(entry.key_delay_ms, 10);
         assert_eq!(entry.steps, vec![MacroStep::KeyTap { code: 35 }]);
     }
 

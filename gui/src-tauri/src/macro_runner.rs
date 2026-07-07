@@ -142,23 +142,48 @@ async fn run_saved_macro(saved: &SavedMacro, cancel: &AtomicBool) -> Result<(), 
                     break 'iterations;
                 }
 
-                match step {
+                let emitted_input = match step {
                     MacroStep::KeyDown { code } => {
-                        emit(&mut output, &mut held, *code, false, true)?
+                        emit(&mut output, &mut held, *code, false, true)?;
+                        true
                     }
-                    MacroStep::KeyUp { code } => emit(&mut output, &mut held, *code, false, false)?,
+                    MacroStep::KeyUp { code } => {
+                        emit(&mut output, &mut held, *code, false, false)?;
+                        true
+                    }
                     MacroStep::KeyTap { code } => {
                         emit(&mut output, &mut held, *code, false, true)?;
                         emit(&mut output, &mut held, *code, false, false)?;
+                        true
                     }
                     MacroStep::MouseButton { code, pressed } => {
-                        emit(&mut output, &mut held, *code, true, *pressed)?
+                        emit(&mut output, &mut held, *code, true, *pressed)?;
+                        true
                     }
                     MacroStep::Delay { ms } => {
                         if !sleep_unless_canceled(cancel, *ms as u64).await {
                             break 'iterations;
                         }
+                        false
                     }
+                    MacroStep::Rumble { ms } => {
+                        // Force-feedback output is not wired up yet; keep the
+                        // step's timing so sequences stay in sync.
+                        tracing::debug!("rumble step ({ms}ms): FF output not implemented yet");
+                        if !sleep_unless_canceled(cancel, *ms as u64).await {
+                            break 'iterations;
+                        }
+                        false
+                    }
+                };
+
+                // Global inter-key delay between input steps (explicit delays
+                // and rumbles manage their own timing).
+                if emitted_input
+                    && saved.key_delay_ms > 0
+                    && !sleep_unless_canceled(cancel, saved.key_delay_ms as u64).await
+                {
+                    break 'iterations;
                 }
             }
 

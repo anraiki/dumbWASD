@@ -1117,6 +1117,18 @@ html, body {
   padding: 0 14px;
 }
 
+.macro-insert {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  height: 40px;
+}
+
+.macro-insert-btn {
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .macro-mode-switch {
   display: inline-flex;
   align-items: stretch;
@@ -1372,8 +1384,8 @@ html, body {
   flex-wrap: wrap;
   align-content: flex-start;
   align-items: stretch;
-  row-gap: 10px;
-  column-gap: 10px;
+  row-gap: 7px;
+  column-gap: 7px;
   min-height: 216px;
 }
 
@@ -1421,7 +1433,7 @@ html, body {
 
 .macro-flow-gap {
   width: 0;
-  height: 48px;
+  height: 32px;
   flex: 0 0 auto;
   border-radius: 10px;
   position: relative;
@@ -1442,7 +1454,7 @@ html, body {
   top: 50%;
   left: 50%;
   width: 4px;
-  height: 64px;
+  height: 44px;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.24), 0 0 18px rgba(var(--accent-rgb), 0.18);
@@ -1450,13 +1462,13 @@ html, body {
 }
 
 .macro-flow-chip {
-  height: 48px;
+  height: 32px;
   flex: 0 0 auto;
   display: inline-flex;
-  gap: 10px;
+  gap: 7px;
   align-items: center;
-  padding: 0 16px;
-  border-radius: 10px;
+  padding: 0 10px;
+  border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(28, 28, 30, 0.92);
   color: var(--text);
@@ -1482,6 +1494,15 @@ html, body {
   background: rgba(36, 36, 40, 0.95);
 }
 
+.macro-flow-chip-rumble {
+  border-color: rgba(var(--accent-rgb), 0.38);
+  background: rgba(var(--accent-rgb), 0.09);
+}
+
+.macro-flow-chip-rumble .macro-flow-chip-label {
+  color: rgba(var(--accent-rgb), 0.92);
+}
+
 .macro-flow-chip-meta {
   cursor: default;
 }
@@ -1502,13 +1523,13 @@ html, body {
 }
 
 .macro-flow-chip-arrow svg {
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 
 .macro-flow-chip-label {
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1516,7 +1537,7 @@ html, body {
 }
 
 .macro-flow-chip-input-name {
-  font-size: 15px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -1528,17 +1549,27 @@ html, body {
 }
 
 .macro-flow-chip-input input {
-  width: 64px;
-  padding: 6px 8px;
+  width: 46px;
+  padding: 2px 6px;
+  font-size: 12px;
+  text-align: center;
   background: rgba(20, 20, 22, 0.82);
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: 7px;
   outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.macro-flow-chip-input input::-webkit-outer-spin-button,
+.macro-flow-chip-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .macro-flow-chip-input span {
-  font-size: 12px;
+  font-size: 10px;
   color: #bbb5ab;
   text-transform: uppercase;
 }

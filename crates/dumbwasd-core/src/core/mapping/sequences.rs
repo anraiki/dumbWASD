@@ -195,6 +195,11 @@ impl Mapper {
                 MacroStep::Delay { ms } => {
                     offset += Duration::from_millis(u64::from(*ms));
                 }
+                // Force-feedback output is not wired up in the engine yet;
+                // keep the step's timing so the sequence stays in sync.
+                MacroStep::Rumble { ms } => {
+                    offset += Duration::from_millis(u64::from(*ms));
+                }
             }
         }
 

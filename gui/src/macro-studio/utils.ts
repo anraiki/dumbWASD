@@ -4,8 +4,16 @@ export function clampNumber(value: string | undefined, minimum: number, fallback
   return Math.max(minimum, Math.round(parsed));
 }
 
-export function toolbarIcon(kind: "trash" | "play" | "stop") {
+export function toolbarIcon(kind: "trash" | "play" | "stop" | "clean") {
   switch (kind) {
+    case "clean":
+      return `
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m14.5 3.5 6 6-5 5-6-6 5-5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M9.5 8.5 4 14c-.8.8-.8 2 0 2.8l3.2 3.2c.8.8 2 .8 2.8 0l5.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="m6.5 11.5 6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      `;
     case "trash":
       return `
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">

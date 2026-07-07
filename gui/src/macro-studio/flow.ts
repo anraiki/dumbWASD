@@ -10,7 +10,7 @@ export interface MacroTimelineFlowApi {
 interface TimelineRenderChip {
   key: string;
   itemId?: number;
-  kind: "action" | "wait" | "meta";
+  kind: "action" | "wait" | "rumble" | "meta";
   label: string;
   secondary?: string;
   draggable: boolean;
@@ -30,7 +30,7 @@ export function initTimelineFlow(flowHost: HTMLElement, ctx: MacroFlowCtx): Macr
     onWaitChange: (itemId, value) => {
       const timeline = macroTimeline.getTimeline();
       const item = timeline.find((entry) => entry.id === itemId);
-      if (!item || item.kind !== "wait") return;
+      if (!item || (item.kind !== "wait" && item.kind !== "rumble")) return;
       item.durationMs = Math.max(0, Math.round(value));
       state.codeDirty = false;
       state.codeStatus = "Generated from macro builder";
@@ -111,12 +111,12 @@ function buildTimelineRenderChips(
   }
 
   for (const item of timeline) {
-    if (item.kind === "wait") {
+    if (item.kind === "wait" || item.kind === "rumble") {
       chips.push({
-        key: `wait-${item.id}`,
+        key: `${item.kind}-${item.id}`,
         itemId: item.id,
-        kind: "wait",
-        label: "Wait",
+        kind: item.kind,
+        label: item.kind === "rumble" ? "Rumble" : "Wait",
         draggable: !playbackRunning,
         waitValue: item.durationMs,
       });

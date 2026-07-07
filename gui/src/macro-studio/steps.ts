@@ -11,6 +11,8 @@ export function timelineToSteps(timeline: MacroTimelineItem[]): MacroStepDto[] {
   for (const item of timeline) {
     if (item.kind === "wait") {
       steps.push({ type: "delay", ms: item.durationMs });
+    } else if (item.kind === "rumble") {
+      steps.push({ type: "rumble", ms: item.durationMs });
     } else if (item.code >= FIRST_MOUSE_CODE && item.code <= LAST_MOUSE_CODE) {
       steps.push({ type: "mouse_button", code: item.code, pressed: item.direction === "down" });
     } else {
@@ -51,6 +53,9 @@ export function stepsToTimeline(steps: MacroStepDto[], nextId: () => number): Ma
         break;
       case "delay":
         timeline.push({ id: nextId(), kind: "wait", durationMs: step.ms });
+        break;
+      case "rumble":
+        timeline.push({ id: nextId(), kind: "rumble", durationMs: step.ms });
         break;
     }
   }
