@@ -19,6 +19,11 @@ raw_name_aliases = [
 capabilities = ["gamepad"]
 button_count = 17
 
+logical_device_key = "xbox-controller"
+logical_device_name = "Xbox Controller"
+logical_role = "virtual"
+group_strategy = "group"
+
 search_terms = [
   "steam",
   "valve",
@@ -30,4 +35,4 @@ search_terms = [
 [source]
 kind = "curated"
 origin = "project-local"
-notes = "Steam Input's virtual gamepad — a uinput device Steam creates while it remaps a physical controller. It impersonates 'Microsoft X-Box 360 pad N' with Valve's VID:PID, so it is renamed here to avoid confusion with real hardware. It only exists while Steam is running."
+notes = "Steam Input's virtual gamepad — a uinput device Steam creates while it remaps a physical controller. Steam EVIOCGRABs the real pad and republishes it here, so this node is the live one whenever Steam Input is on. It impersonates 'Microsoft X-Box 360 pad N' with Valve's VID:PID, and is grouped into 'xbox-controller' so bindings follow the controller across that handoff."

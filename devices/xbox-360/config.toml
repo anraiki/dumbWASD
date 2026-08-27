@@ -1,0 +1,37 @@
+schema_version = 1
+key = "xbox-360-pad"
+
+vendor_id = 0x045E
+product_id = 0x028E
+
+vendor_name = "Microsoft"
+model = "Xbox 360 Controller (XInput)"
+friendly_name = "Xbox 360 Pad"
+
+raw_name_aliases = [
+  "Microsoft X-Box 360 pad",
+  "Xbox 360 Controller",
+  "Generic X-Box pad",
+]
+
+capabilities = ["gamepad"]
+button_count = 17
+
+logical_device_key = "xbox-controller"
+logical_device_name = "Xbox Controller"
+logical_role = "xinput"
+group_strategy = "group"
+
+search_terms = [
+  "xbox",
+  "360",
+  "xinput",
+  "microsoft",
+  "gamepad",
+  "045e:028e",
+]
+
+[source]
+kind = "curated"
+origin = "project-local"
+notes = "The identity the kernel's xpad driver reports for any XInput pad in wired 360 mode — real 360 pads and third-party clones alike (e.g. ZhiXu, which borrows Microsoft's VID). Grouped with the other Xbox identities so bindings survive a transport change."

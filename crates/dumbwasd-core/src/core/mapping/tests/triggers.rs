@@ -16,6 +16,8 @@ fn resolves_legacy_mapping() {
             device: None,
             from: 30,
             to: OutputTarget::Key { code: 37 },
+            exclusive: false,
+            toggle: false,
         }],
     };
 
@@ -59,6 +61,24 @@ fn resolves_press_start_immediately() {
             pressed: true,
         }]
     );
+}
+
+#[test]
+fn ignores_bindings_for_a_device_with_mappings_disabled() {
+    let mut profile = single_binding_profile(Trigger::PressStart, BindingOutput::Key { code: 37 });
+    profile.devices[0].mappings_enabled = false;
+    let mut mapper = Mapper::new();
+
+    let actions = mapper.handle_event(
+        &InputEvent::Button {
+            code: 30,
+            pressed: true,
+        },
+        &profile,
+        Instant::now(),
+    );
+
+    assert!(actions.is_empty());
 }
 
 #[test]

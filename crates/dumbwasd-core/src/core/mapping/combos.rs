@@ -34,6 +34,7 @@ impl Mapper {
         profile
             .devices
             .iter()
+            .filter(|device| device.mappings_enabled)
             .filter_map(|device| device.active_binding_preset())
             .flat_map(|binding_preset| binding_preset.combos.iter())
             .filter(|combo| {

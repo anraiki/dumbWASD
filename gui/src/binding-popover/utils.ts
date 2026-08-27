@@ -11,6 +11,41 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+/// A label + toggle switch on one row, with optional inline controls
+/// (a number input, say) sitting between them.
+///
+/// The switch is a real checkbox so it stays keyboard- and
+/// screen-reader-operable; the track is only its visual skin. The label uses
+/// `for` rather than wrapping, so inline controls next to it stay clickable
+/// without toggling the switch.
+export function renderSwitchRow(params: {
+  id: string;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  inputClass: string;
+  aside?: string;
+}): string {
+  const disabled = params.disabled ? "disabled" : "";
+
+  return `<div class="binding-popover-switch-row">
+      <label class="binding-popover-switch-label" for="${params.id}">${escapeHtml(params.label)}</label>
+      <div class="binding-popover-switch-controls">
+        ${params.aside ?? ""}
+        <span class="binding-popover-switch">
+          <input
+            type="checkbox"
+            id="${params.id}"
+            class="${params.inputClass}"
+            ${params.checked ? "checked" : ""}
+            ${disabled}
+          />
+          <span class="binding-popover-switch-track" aria-hidden="true"></span>
+        </span>
+      </div>
+    </div>`;
+}
+
 export function getNoneBadgeMarkup() {
   return `
       <span class="binding-popover-none">

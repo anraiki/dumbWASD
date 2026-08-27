@@ -14,11 +14,13 @@ export interface ProfileDevice {
   raw_name?: string;
   layout: string;
   device_kind?: ProfileDeviceKind;
+  mappings_enabled?: boolean;
   active?: boolean;
 }
 
 export interface DeviceBarOptions {
   onSelectDevice: (device: ProfileDevice) => void;
+  onToggleMappings: (device: ProfileDevice, enabled: boolean) => Promise<void>;
   onAddDevice: () => void;
   onOpenDeviceMenu: (device: ProfileDevice, position: { x: number; y: number }) => void;
 }
@@ -79,6 +81,8 @@ export function createDeviceBar(
       const classes = ["device-chip"];
       if (isSelected) classes.push("selected");
       if (!isActive) classes.push("inactive");
+      const mappingsEnabled = dev.mappings_enabled !== false;
+      if (!mappingsEnabled) classes.push("mappings-disabled");
       chip.className = classes.join(" ");
       const vid = toHex(dev.vendor_id);
       const pid = toHex(dev.product_id);
@@ -87,11 +91,22 @@ export function createDeviceBar(
       chip.innerHTML = `
         <span class="device-chip-icon" style="mask-image:url(${icon});-webkit-mask-image:url(${icon})"></span>
         <span class="device-chip-status-dot"></span>
+        <button type="button" class="device-chip-power" aria-label="${mappingsEnabled ? "Disable" : "Enable"} mappings for ${dev.name || "device"}" aria-pressed="${mappingsEnabled}" title="${mappingsEnabled ? "Mappings enabled" : "Mappings disabled"}">
+          <svg class="power-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10M6.34 5.34a8 8 0 1 0 11.32 0" /></svg>
+        </button>
         <div class="device-chip-tooltip">
           <span class="device-chip-name">${dev.name || "Unknown Device"}</span>
           <span class="device-chip-id">${dev.id ? `${dev.id} · ` : ""}VID:PID: ${vid}:${pid}</span>
-          <span class="device-chip-status">${status}</span>
+          <span class="device-chip-status">${status} · Mappings ${mappingsEnabled ? "on" : "off"}</span>
         </div>`;
+      const power = chip.querySelector<HTMLButtonElement>(".device-chip-power");
+      power?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        power.disabled = true;
+        void options.onToggleMappings(dev, !mappingsEnabled).catch(() => {
+          power.disabled = false;
+        });
+      });
       chip.addEventListener("click", () => options.onSelectDevice(dev));
       chip.addEventListener("contextmenu", (event) => {
         event.preventDefault();

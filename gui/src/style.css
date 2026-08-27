@@ -580,7 +580,6 @@ html, body {
 }
 
 .device-svg-bindable:hover,
-.device-svg-bindable:focus-visible,
 .device-svg-hit-target.selected {
   fill: rgba(var(--accent-rgb), 0.44) !important;
   fill-opacity: 1 !important;
@@ -588,11 +587,9 @@ html, body {
 }
 
 .device-svg-hit-target.active {
-  fill: rgba(134, 146, 123, 0.78) !important;
+  fill: rgba(var(--accent-rgb), 0.68) !important;
   fill-opacity: 1 !important;
-  stroke: rgba(237, 240, 232, 0.62) !important;
-  stroke-width: 2px !important;
-  filter: drop-shadow(0 0 10px rgba(134, 146, 123, 0.28));
+  filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.28));
 }
 
 .button-grid {
@@ -807,6 +804,217 @@ html, body {
   font-size: 12px;
   line-height: 1.5;
   color: #9f9a92;
+}
+
+/* ── Toggle switches ───────────────────────────────────────────────── */
+
+.binding-popover-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.binding-popover-switch-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9f9a92;
+  cursor: pointer;
+}
+
+.binding-popover-switch-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.binding-popover-switch-unit {
+  font-size: 12px;
+  color: #9f9a92;
+}
+
+.binding-popover-repeat-ms {
+  width: 62px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  text-align: right;
+  color: #ede8e0;
+  background: #1b1a18;
+  border: 1px solid #3a3733;
+  border-radius: 4px;
+}
+
+.binding-popover-repeat-ms:focus {
+  outline: none;
+  border-color: rgba(var(--accent-rgb), 0.7);
+}
+
+.binding-popover-repeat-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 130ms ease;
+}
+
+.binding-popover-repeat-interval.is-muted {
+  opacity: 0.38;
+}
+
+.binding-popover-repeat-interval.is-muted .binding-popover-repeat-ms {
+  cursor: not-allowed;
+}
+
+.binding-popover-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.binding-popover-switch input {
+  position: absolute;
+  inset: 0;
+  /* A checkbox is a replaced element: `inset: 0` alone leaves it at its
+     intrinsic ~13px, so only a knob-sized patch of the switch was
+     clickable. The explicit size makes the whole track the hit area. */
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.binding-popover-switch-track {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: #3a3733;
+  transition: background 130ms ease;
+  /* The track is drawn after the input and would otherwise swallow the
+     click meant for it. */
+  pointer-events: none;
+}
+
+.binding-popover-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ede8e0;
+  transition: transform 130ms ease;
+}
+
+.binding-popover-switch input:checked + .binding-popover-switch-track {
+  background: rgba(var(--accent-rgb), 0.8);
+}
+
+.binding-popover-switch input:checked + .binding-popover-switch-track::after {
+  transform: translateX(15px);
+}
+
+.binding-popover-switch input:focus-visible + .binding-popover-switch-track {
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.45);
+}
+
+.binding-popover-switch input:disabled + .binding-popover-switch-track {
+  opacity: 0.5;
+}
+
+/* ── Toolbar + help overlay ────────────────────────────────────────── */
+
+.binding-popover-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: -8px;
+}
+
+.binding-popover-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #9f9a92;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.binding-popover-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.binding-popover-icon-btn:hover {
+  color: #ede8e0;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.binding-popover-icon-btn:focus-visible {
+  outline: none;
+  color: #ede8e0;
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.45);
+}
+
+.binding-popover-info {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  overflow-y: auto;
+  /* Fully opaque: the binding controls underneath must not ghost through. */
+  background: #1a1a1c;
+}
+
+.binding-popover-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.binding-popover-info-head strong {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ede8e0;
+}
+
+.binding-popover-info-list {
+  margin: 0;
+}
+
+.binding-popover-info-list dt {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(var(--accent-rgb), 0.9);
+}
+
+.binding-popover-info-list dt:first-child {
+  margin-top: 0;
+}
+
+.binding-popover-info-list dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #b8b2a9;
 }
 
 .binding-popover-import-status.differs {
@@ -1948,6 +2156,144 @@ html, body {
   -webkit-mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
+}
+
+.device-chip-power {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #4ade80;
+  cursor: pointer;
+}
+
+.power-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn-power {
+  min-width: 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #facc15;
+}
+
+.btn-power:hover,
+.btn-power.active,
+.btn-power.active:hover {
+  border-color: transparent;
+  background: transparent;
+  color: #facc15;
+  box-shadow: none;
+}
+
+.btn-power .power-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.mapping-power-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 10px;
+  user-select: none;
+}
+
+.mapping-power-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--button-bg);
+}
+
+.mapping-power-control:hover {
+  border-color: var(--text-muted);
+}
+
+.mapping-power-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mapping-power-toggle-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mapping-power-toggle-track span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.mapping-power-toggle input:checked + .mapping-power-toggle-track {
+  background: rgba(74, 222, 128, 0.3);
+}
+
+.mapping-power-toggle input:checked + .mapping-power-toggle-track span {
+  background: #4ade80;
+  transform: translateX(16px);
+}
+
+.mapping-power-toggle input:focus-visible + .mapping-power-toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mapping-power-toggle input:disabled + .mapping-power-toggle-track {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.selected-device-mappings-disabled .btn-power {
+  color: var(--text-muted);
+  filter: saturate(0.2);
+}
+
+.selected-device-mappings-disabled .device-chip.selected .device-chip-icon,
+.selected-device-mappings-disabled .device-chip.selected .device-chip-power {
+  color: var(--text-muted);
+  filter: saturate(0.2);
+}
+
+.device-chip-power:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.device-chip.mappings-disabled .device-chip-icon {
+  opacity: 0.45;
+}
+
+.device-chip.mappings-disabled .device-chip-power {
+  color: var(--text-muted);
 }
 
 .device-chip-tooltip {

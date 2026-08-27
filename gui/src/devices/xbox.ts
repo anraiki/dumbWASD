@@ -1,4 +1,5 @@
 import xboxSvgMarkup from "@devices/xbox/layout.svg?raw";
+import { STICK_CODES, STICK_LABELS } from "../stick-codes";
 import type { DeviceSvgConfig } from "./layout";
 
 function sanitizeInlineSvgMarkup(markup: string): string {
@@ -28,6 +29,15 @@ const BUTTON_CODES = new Map<number, string>([
   [545, "DPAD_DOWN"],
   [546, "DPAD_LEFT"],
   [547, "DPAD_RIGHT"],
+  // Synthetic codes — core converts stick motion into presses on these.
+  [STICK_CODES.LSTICK_UP, "LSTICK_UP"],
+  [STICK_CODES.LSTICK_DOWN, "LSTICK_DOWN"],
+  [STICK_CODES.LSTICK_LEFT, "LSTICK_LEFT"],
+  [STICK_CODES.LSTICK_RIGHT, "LSTICK_RIGHT"],
+  [STICK_CODES.RSTICK_UP, "RSTICK_UP"],
+  [STICK_CODES.RSTICK_DOWN, "RSTICK_DOWN"],
+  [STICK_CODES.RSTICK_LEFT, "RSTICK_LEFT"],
+  [STICK_CODES.RSTICK_RIGHT, "RSTICK_RIGHT"],
 ]);
 
 const BUTTON_LABELS = new Map<number, string>([
@@ -48,6 +58,14 @@ const BUTTON_LABELS = new Map<number, string>([
   [545, "D-pad Down"],
   [546, "D-pad Left"],
   [547, "D-pad Right"],
+  [STICK_CODES.LSTICK_UP, STICK_LABELS.LSTICK_UP],
+  [STICK_CODES.LSTICK_DOWN, STICK_LABELS.LSTICK_DOWN],
+  [STICK_CODES.LSTICK_LEFT, STICK_LABELS.LSTICK_LEFT],
+  [STICK_CODES.LSTICK_RIGHT, STICK_LABELS.LSTICK_RIGHT],
+  [STICK_CODES.RSTICK_UP, STICK_LABELS.RSTICK_UP],
+  [STICK_CODES.RSTICK_DOWN, STICK_LABELS.RSTICK_DOWN],
+  [STICK_CODES.RSTICK_LEFT, STICK_LABELS.RSTICK_LEFT],
+  [STICK_CODES.RSTICK_RIGHT, STICK_LABELS.RSTICK_RIGHT],
 ]);
 
 const ALIASES = new Map<string, Set<string>>([

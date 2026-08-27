@@ -105,6 +105,13 @@ pub trait InputBackend: Send {
     async fn open_device(&mut self, path: &str) -> Result<()>;
     /// Read the next input event (blocks until available).
     async fn next_event(&mut self) -> Result<InputEvent>;
+    /// Reported ranges of the open device's absolute axes, as
+    /// `(axis, minimum, maximum, flat)`. Used to normalize thumbstick
+    /// motion; backends that cannot report ranges leave this empty and
+    /// callers fall back to a signed 16-bit assumption.
+    fn axis_ranges(&self) -> Vec<(u16, i32, i32, i32)> {
+        Vec::new()
+    }
 }
 
 /// Trait for emitting output events to a virtual device.

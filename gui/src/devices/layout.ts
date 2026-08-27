@@ -75,7 +75,6 @@ export function createDeviceSvgPreview(
 
         if (code && label && options.onButtonClick) {
           element.classList.add("device-svg-bindable");
-          element.setAttribute("tabindex", "0");
           element.setAttribute("role", "button");
           element.setAttribute("aria-label", `Configure ${label} (${code})`);
 
@@ -87,14 +86,6 @@ export function createDeviceSvgPreview(
             event.preventDefault();
           });
 
-          element.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter" && event.key !== " ") {
-              return;
-            }
-
-            event.preventDefault();
-            options.onButtonClick?.({ id: code, label }, element);
-          });
         }
       }
     }
@@ -120,18 +111,27 @@ export function createDeviceSvgPreview(
       const nextAnalogKeys = new Set<string>();
       const threshold = 0.35;
 
+      // A direction that owns a button code is highlighted by the
+      // button-state events core synthesizes for it. Driving it from the raw
+      // axis vector too would let the two sources clear each other's class.
+      const addKey = (key?: string) => {
+        if (key && !reverseCodes.has(key)) {
+          nextAnalogKeys.add(key);
+        }
+      };
+
       if (vectorKeys) {
-        if (x <= -threshold && vectorKeys.left) {
-          nextAnalogKeys.add(vectorKeys.left);
+        if (x <= -threshold) {
+          addKey(vectorKeys.left);
         }
-        if (x >= threshold && vectorKeys.right) {
-          nextAnalogKeys.add(vectorKeys.right);
+        if (x >= threshold) {
+          addKey(vectorKeys.right);
         }
-        if (y <= -threshold && vectorKeys.up) {
-          nextAnalogKeys.add(vectorKeys.up);
+        if (y <= -threshold) {
+          addKey(vectorKeys.up);
         }
-        if (y >= threshold && vectorKeys.down) {
-          nextAnalogKeys.add(vectorKeys.down);
+        if (y >= threshold) {
+          addKey(vectorKeys.down);
         }
       }
 

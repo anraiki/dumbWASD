@@ -1,7 +1,11 @@
+pub mod arbiter;
 pub mod config;
+pub mod dpad;
 pub mod engine;
 pub mod event;
+pub mod latch;
 pub mod layout;
 pub mod macros;
 pub mod mapping;
 pub mod profile;
+pub mod sticks;

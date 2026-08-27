@@ -1,5 +1,7 @@
 import { getMappingTargetLabel, normalizeShortcutModifiers } from "../input-codes";
 import type { PopoverContext } from "./types";
+import { renderInfoPanel, renderToolbar, wireInfoPanel } from "./info-panel";
+import { renderOptionFields, wireOptionFields } from "./options";
 import { escapeHtml, getDisplayMarkup } from "./utils";
 
 export function renderPopover(ctx: PopoverContext) {
@@ -11,15 +13,21 @@ export function renderPopover(ctx: PopoverContext) {
 
   const activeLabel = getMappingTargetLabel(state.currentSelection);
   const keySelection = state.currentSelection?.type === "macro" ? null : state.currentSelection;
-  const captureTitle = state.listening
-    ? state.captureModifiers.size
-      ? `${normalizeShortcutModifiers([...state.captureModifiers])
-        .map((code) => getMappingTargetLabel({ type: "key", code }))
-        .join(" + ")} + ...`
-      : "Press a key, shortcut, or mouse button"
-    : getMappingTargetLabel(keySelection);
+  // Capture is armed the whole time the popover is open, so the field keeps
+  // showing the pending selection instead of reverting to a prompt.
+  const pendingModifiers = state.captureModifiers.size
+    ? `${normalizeShortcutModifiers([...state.captureModifiers])
+      .map((code) => getMappingTargetLabel({ type: "key", code }))
+      .join(" + ")} + ...`
+    : null;
+  const captureTitle = pendingModifiers
+    ?? (keySelection
+      ? getMappingTargetLabel(keySelection)
+      : state.listening
+        ? "Press a key, shortcut, or mouse button"
+        : getMappingTargetLabel(keySelection));
   const captureHint = state.listening
-    ? "Press another key to finish a shortcut, or press Esc to cancel."
+    ? "Listening — press any key, shortcut, or mouse button. Nothing is applied until you hit Save."
     : "Click here, then press a key, shortcut, or mouse button.";
   const embeddedDefinition = state.currentSelection?.type === "macro" ? state.currentSelection.definition : undefined;
   const selectedMacroId = embeddedDefinition?.id ?? "";
@@ -58,7 +66,11 @@ export function renderPopover(ctx: PopoverContext) {
         </select>
       </label>`
     : "";
+
+  const optionFieldsMarkup = renderOptionFields(state);
+
   popover.innerHTML = `
+      ${renderToolbar(state)}
       <div class="binding-popover-preview">
         <span class="binding-popover-preview-label">Output</span>
         <strong class="binding-popover-preview-value">${getDisplayMarkup(activeLabel)}</strong>
@@ -88,7 +100,7 @@ export function renderPopover(ctx: PopoverContext) {
           ${orphanedOptionMarkup}
           <option value="__new__">＋ Create new macro…</option>
         </select>
-      </label>${importStatusMarkup}${behaviorFieldMarkup}
+      </label>${importStatusMarkup}${behaviorFieldMarkup}${optionFieldsMarkup}
       <p class="binding-popover-help">
         ${helpText}
       </p>
@@ -100,7 +112,10 @@ export function renderPopover(ctx: PopoverContext) {
           <button type="button" class="btn binding-popover-save"${state.currentSelection ? "" : " disabled"}>Save</button>
         </div>
       </div>
+      ${renderInfoPanel(state)}
     `;
+
+  wireInfoPanel(ctx);
 
   const captureButtonEl = popover.querySelector<HTMLButtonElement>(".binding-popover-capture");
   const errorEl = popover.querySelector<HTMLElement>(".binding-popover-error");
@@ -195,6 +210,8 @@ export function renderPopover(ctx: PopoverContext) {
     ctx.positionPopover();
   });
 
+  wireOptionFields(ctx);
+
   cancelBtn.addEventListener("click", () => ctx.close());
   captureButtonEl.addEventListener("click", () => {
     if (state.pending) {
@@ -223,7 +240,10 @@ export function renderPopover(ctx: PopoverContext) {
 
     const nextBinding = state.currentSelection;
     void ctx.runAction(async () => {
-      await options.onSave(nextBinding);
+      await options.onSave(nextBinding, {
+        exclusive: state.currentExclusive,
+        toggle: state.currentToggle,
+      });
       ctx.close();
     });
   });

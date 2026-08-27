@@ -1,3 +1,6 @@
+use crate::arbiter_state::SharedArbiter;
+use crate::repeat_runner::RepeatRunner;
+use dumbwasd_core::core::event::OutputAction;
 use dumbwasd_core::core::profile::OutputTarget;
 use dumbwasd_core::platform::OutputBackend;
 use std::sync::Mutex;
@@ -11,8 +14,39 @@ pub struct OutputState {
 pub fn emit_output_target(
     target: OutputTarget,
     pressed: bool,
+    code: Option<u16>,
+    exclusive: Option<bool>,
+    toggle: Option<bool>,
     state: tauri::State<'_, OutputState>,
+    repeat: tauri::State<'_, RepeatRunner>,
+    arbiter: tauri::State<'_, SharedArbiter>,
 ) -> Result<(), String> {
+    // With a source button known, the arbiter decides what may reach the
+    // output — an exclusive binding silences everything else while held.
+    // Without one there is nothing to arbitrate against, so emit directly.
+    let actions = match code {
+        Some(code) => {
+            let arbitration = arbiter.resolve(
+                code,
+                pressed,
+                target,
+                exclusive.unwrap_or(false),
+                toggle.unwrap_or(false),
+            )?;
+            arbiter.sync_repeats(&arbitration, &repeat);
+            arbitration.actions
+        }
+        None => target.actions(pressed),
+    };
+
+    emit(&state, &actions)
+}
+
+fn emit(state: &tauri::State<'_, OutputState>, actions: &[OutputAction]) -> Result<(), String> {
+    if actions.is_empty() {
+        return Ok(());
+    }
+
     let mut backend_guard = state
         .backend
         .lock()
@@ -28,12 +62,7 @@ pub fn emit_output_target(
         .as_mut()
         .ok_or_else(|| "Output backend unavailable".to_string())?;
 
-    let actions = target.actions(pressed);
-    if actions.is_empty() {
-        return Ok(());
-    }
-
-    for action in &actions {
+    for action in actions {
         backend.emit(action).map_err(|e| format!("{e:#}"))?;
     }
     backend.emit_sync().map_err(|e| format!("{e:#}"))?;

@@ -1,59 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { DeviceEntry } from "../device-modal";
-import type { ProfileManagerHandle } from "../profile-manager";
+import type { DeviceEntry } from "../../device-modal";
+import type { ProfileManagerHandle } from "../../profile-manager";
+import { createRequestBuilder } from "./request";
+import type {
+  AzeronHidReportEvent,
+  AzeronJoystickStateEvent,
+  AxisStateEvent,
+  ButtonStateEvent,
+  MonitoringRequest,
+  MonitorHandle,
+} from "./types";
 
-// ── Event payload types ──
-
-interface ButtonStateEvent {
-  code: number;
-  pressed: boolean;
-  device_path: string;
-  device_name: string;
-}
-
-interface AxisStateEvent {
-  axis: number;
-  value: number;
-  device_path: string;
-  device_name: string;
-  minimum?: number;
-  maximum?: number;
-  flat?: number;
-}
-
-interface AzeronJoystickStateEvent {
-  x: number;
-  y: number;
-  raw_x: number;
-  raw_y: number;
-  source: string;
-}
-
-interface AzeronHidReportEvent {
-  length: number;
-  hex: string;
-  ascii?: string | null;
-  parsed_source?: string | null;
-}
-
-// ── Public types ──
-
-export interface MonitoringRequest {
-  devicePaths: string[];
-  label: string;
-  useAzeronHid: boolean;
-  legacyMappings: Array<{ device?: string; from: number; to: Record<string, unknown> }>;
-  suppressMappedInputs: boolean;
-}
-
-export interface MonitorHandle {
-  syncScope(force?: boolean): Promise<void>;
-  stop(): Promise<void>;
-  isActive(): boolean;
-}
-
-// ── Constants ──
+export type { MonitoringRequest, MonitorHandle } from "./types";
 
 const MOUSE_BUTTON_CODES = new Set([272, 273, 274, 275, 276]);
 
@@ -93,87 +52,27 @@ export function createMonitor(options: {
 }): MonitorHandle {
   let active = false;
   let runtimeRemapActive = false;
-  let monitoredPathsKey = "";
+  let monitoredRequestKey = "";
   let unlistenButtonState: (() => void) | null = null;
   let unlistenAxisState: (() => void) | null = null;
   let unlistenAzeronJoystickState: (() => void) | null = null;
   let unlistenAzeronHidReport: (() => void) | null = null;
 
-  function getAllMonitoredPaths(): string[] {
-    return [...new Set(options.allDevices.flatMap((device) => device.paths))];
-  }
+  const { buildRequest, requestKey } = createRequestBuilder({
+    allDevices: options.allDevices,
+    profileManager: options.profileManager,
+    getIsMacroMode: options.getIsMacroMode,
+    getListenAllDevices: options.getListenAllDevices,
+  });
 
-  function shouldSuppressMappedInputs(): boolean {
-    const selectedDevice = options.profileManager.getSelectedDevice();
-    const currentProfile = options.profileManager.getCurrentProfile();
-    if (options.getIsMacroMode() || options.getListenAllDevices() || !selectedDevice || !currentProfile?.mappings.length) {
-      return false;
-    }
-    return selectedDevice.device_kind === "mouse" || selectedDevice.device_kind === "keyboard";
-  }
 
-  function buildRequest(): MonitoringRequest | null {
-    const currentProfile = options.profileManager.getCurrentProfile();
-    const selectedDevice = options.profileManager.getSelectedDevice();
-    const legacyMappings = (currentProfile?.mappings ?? []) as MonitoringRequest["legacyMappings"];
-    const suppressMappedInputs = shouldSuppressMappedInputs();
-
-    if (options.getIsMacroMode()) {
-      const keyboardPaths = options.allDevices
-        .filter((device) => device.has_keyboard)
-        .flatMap((device) => device.paths);
-
-      const curatedPaths = currentProfile
-        ? currentProfile.devices.flatMap((device) => {
-            const entry = options.profileManager.findSystemEntry(device);
-            return entry ? entry.paths : [];
-          })
-        : [];
-
-      const devicePaths = [...new Set([...keyboardPaths, ...curatedPaths])];
-      if (devicePaths.length === 0) return null;
-
-      return {
-        devicePaths,
-        label: "Keyboards + curated gamepads",
-        useAzeronHid: selectedDevice?.device_kind === "azeron",
-        legacyMappings,
-        suppressMappedInputs: false,
-      };
-    }
-
-    if (options.getListenAllDevices()) {
-      const devicePaths = getAllMonitoredPaths();
-      if (devicePaths.length === 0) return null;
-
-      return {
-        devicePaths,
-        label: "All detected devices",
-        useAzeronHid: selectedDevice?.device_kind === "azeron",
-        legacyMappings,
-        suppressMappedInputs: false,
-      };
-    }
-
-    if (!selectedDevice) return null;
-
-    const entry = options.profileManager.findSystemEntry(selectedDevice);
-    if (!entry) return null;
-
-    return {
-      devicePaths: entry.paths,
-      label: entry.name,
-      useAzeronHid: entry.is_azeron || selectedDevice.device_kind === "azeron",
-      legacyMappings,
-      suppressMappedInputs,
-    };
-  }
-
-  async function start(request: MonitoringRequest) {
+  async function start(request: MonitoringRequest, { quiet = false }: { quiet?: boolean } = {}) {
     try {
-      options.connectionIndicator.className = "connection-indicator connecting";
-      options.connectionIndicator.title = "Connecting...";
-      options.statusEl.textContent = "Connecting...";
+      if (!quiet) {
+        options.connectionIndicator.className = "connection-indicator connecting";
+        options.connectionIndicator.title = "Connecting...";
+        options.statusEl.textContent = "Connecting...";
+      }
 
       await invoke("start_monitoring", {
         devicePaths: request.devicePaths,
@@ -184,16 +83,18 @@ export function createMonitor(options: {
 
       active = true;
       runtimeRemapActive = request.suppressMappedInputs;
-      monitoredPathsKey = [...request.devicePaths].sort().join("|");
+      monitoredRequestKey = requestKey(request);
       options.reconnectBtn.style.display = "none";
       options.macroStudio.setMonitoringActive(true);
       options.connectionIndicator.className = "connection-indicator connected";
       options.connectionIndicator.title = "Connected";
       options.statusEl.textContent = request.label;
       options.syncAuxPanels();
-      options.eventLogHandle.addMonitoringLogEntry(
-        `Monitoring · HID ${request.useAzeronHid ? "enabled" : "disabled"} · paths ${request.devicePaths.join(", ")}`
-      );
+      if (!quiet) {
+        options.eventLogHandle.addMonitoringLogEntry(
+          `Monitoring · HID ${request.useAzeronHid ? "enabled" : "disabled"} · paths ${request.devicePaths.join(", ")}`
+        );
+      }
 
       unlistenButtonState = await listen<ButtonStateEvent>("button-state", (event) => {
         const { code, pressed, device_path: devicePath, device_name: deviceName } = event.payload;
@@ -243,13 +144,16 @@ export function createMonitor(options: {
       options.connectionIndicator.title = "Disconnected";
       options.statusEl.textContent = `Connection error: ${e}`;
       options.reconnectBtn.style.display = "inline-block";
-      monitoredPathsKey = "";
+      monitoredRequestKey = "";
       options.macroStudio.setMonitoringActive(false);
       options.syncAuxPanels();
     }
   }
 
-  async function stop() {
+  /// `quiet` re-arms the same device in place: the backend stream is still
+  /// replaced, but the disconnected/connecting indicator, the status text
+  /// and the highlight reset are skipped, so the swap is invisible.
+  async function stop({ quiet = false }: { quiet?: boolean } = {}) {
     try {
       await invoke("stop_monitoring");
     } catch (_) {
@@ -258,17 +162,20 @@ export function createMonitor(options: {
 
     active = false;
     runtimeRemapActive = false;
-    monitoredPathsKey = "";
-    options.connectionIndicator.className = "connection-indicator disconnected";
-    options.connectionIndicator.title = "Disconnected";
-    options.reconnectBtn.style.display = "none";
-    options.getButtonGrid()?.clearAll();
-    options.getLayoutEditor()?.clearAll();
-    options.getDeviceSvgPreview()?.clearAll();
-    options.pressedButtons.clear();
-    options.joystickTracker.reset();
-    options.macroStudio.setMonitoringActive(false);
-    options.syncAuxPanels();
+    monitoredRequestKey = "";
+
+    if (!quiet) {
+      options.connectionIndicator.className = "connection-indicator disconnected";
+      options.connectionIndicator.title = "Disconnected";
+      options.reconnectBtn.style.display = "none";
+      options.getButtonGrid()?.clearAll();
+      options.getLayoutEditor()?.clearAll();
+      options.getDeviceSvgPreview()?.clearAll();
+      options.pressedButtons.clear();
+      options.joystickTracker.reset();
+      options.macroStudio.setMonitoringActive(false);
+      options.syncAuxPanels();
+    }
 
     unlistenButtonState?.();
     unlistenButtonState = null;
@@ -283,13 +190,13 @@ export function createMonitor(options: {
   return {
     async syncScope(force = false) {
       const request = buildRequest();
-      const nextKey = request ? [...request.devicePaths].sort().join("|") : "";
+      const nextKey = requestKey(request);
 
       if (!request) {
         if (active) {
           await stop();
         } else {
-          monitoredPathsKey = "";
+          monitoredRequestKey = "";
           runtimeRemapActive = false;
           options.macroStudio.setMonitoringActive(false);
           options.syncAuxPanels();
@@ -297,17 +204,24 @@ export function createMonitor(options: {
         return;
       }
 
-      if (!force && active && nextKey === monitoredPathsKey) {
+      if (!force && active && nextKey === monitoredRequestKey) {
         options.macroStudio.setMonitoringActive(true);
         options.syncAuxPanels();
         return;
       }
 
+      // Same device, different mappings — the backend needs the new list,
+      // but the user should not see the stream being swapped underneath a
+      // save. Re-arm in place instead of a visible disconnect/reconnect.
+      const samePaths =
+        monitoredRequestKey.split("::")[0] === nextKey.split("::")[0];
+      const quiet = active && samePaths;
+
       if (active) {
-        await stop();
+        await stop({ quiet });
       }
 
-      await start(request);
+      await start(request, { quiet });
     },
 
     stop,

@@ -17,6 +17,11 @@ raw_name_aliases = [
 capabilities = ["gamepad"]
 button_count = 17
 
+logical_device_key = "xbox-controller"
+logical_device_name = "Xbox Controller"
+logical_role = "wireless"
+group_strategy = "group"
+
 search_terms = [
   "xbox",
   "microsoft",
@@ -27,4 +32,4 @@ search_terms = [
 [source]
 kind = "curated"
 origin = "project-local"
-notes = "Generic Xbox controller — matched in the frontend by gamepad capability"
+notes = "Generic Xbox One / Series controller. Grouped with the xpad XInput identity and Steam's virtual pad under 'xbox-controller' so one binding set covers every transport."

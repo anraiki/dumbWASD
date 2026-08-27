@@ -1,13 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod arbiter_state;
 mod commands;
 mod events;
 mod macro_runner;
+mod repeat_runner;
 
+use arbiter_state::SharedArbiter;
 use commands::output::OutputState;
 use commands::scripts::ScriptControl;
 use events::MonitorState;
 use macro_runner::MacroRunner;
+use repeat_runner::RepeatRunner;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -47,6 +51,8 @@ fn main() {
         .manage(ScriptControl::default())
         .manage(OutputState::default())
         .manage(MacroRunner::default())
+        .manage(RepeatRunner::default())
+        .manage(SharedArbiter::default())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -95,6 +101,10 @@ fn main() {
             app.global_shortcut()
                 .register(cancel_shortcut)
                 .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+
+            // Devices plugged in (or replugged) after launch are picked up
+            // without restarting the app.
+            events::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

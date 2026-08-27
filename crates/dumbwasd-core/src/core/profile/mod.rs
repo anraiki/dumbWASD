@@ -7,7 +7,7 @@ mod tests;
 pub use bindings::{
     Behavior, Binding, BindingOutput, BindingPreset, Combo, MacroStep, PlaybackMode, Trigger,
 };
-pub use targets::{MacroBindMode, Mapping, OutputTarget};
+pub use targets::{MacroBindMode, Mapping, OutputTarget, MIN_REPEAT_MS};
 
 use std::path::PathBuf;
 
@@ -51,10 +51,17 @@ pub struct ProfileDevice {
     pub layout: String,
     #[serde(default)]
     pub device_kind: String,
+    /// Whether this device's configured mappings are currently applied.
+    #[serde(default = "default_true")]
+    pub mappings_enabled: bool,
     #[serde(default, alias = "active_binding_profile")]
     pub active_binding_preset: String,
     #[serde(default, alias = "binding_profiles")]
     pub binding_presets: Vec<BindingPreset>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl ProfileDevice {

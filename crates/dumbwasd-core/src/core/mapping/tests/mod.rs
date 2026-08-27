@@ -30,6 +30,7 @@ fn single_binding_profile_with_playback(
             raw_name: String::new(),
             layout: String::new(),
             device_kind: String::new(),
+            mappings_enabled: true,
             active_binding_preset: "default".to_string(),
             binding_presets: vec![BindingPreset {
                 id: "default".to_string(),

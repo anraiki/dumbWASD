@@ -63,6 +63,15 @@ export function createDeviceBarController(options: {
       options.setCloseDeviceContextMenu(null);
       await options.getProfileManager().selectDevice(device);
     },
+    async onToggleMappings(device, enabled) {
+      try {
+        await options.getProfileManager().setDeviceMappingsEnabled(device, enabled);
+        options.statusEl.textContent = `${device.name} mappings ${enabled ? "enabled" : "disabled"}`;
+      } catch (error) {
+        options.statusEl.textContent = `Error updating device mappings: ${error}`;
+        throw error;
+      }
+    },
     async onAddDevice() {
       options.getCloseDeviceContextMenu()?.();
       options.setCloseDeviceContextMenu(null);

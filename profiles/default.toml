@@ -10,17 +10,19 @@ name = "Azeron Keypad"
 raw_name = "Azeron LTD Azeron Keypad"
 layout = "azeron-cyborg"
 device_kind = "azeron"
+mappings_enabled = true
 active_binding_preset = ""
 binding_presets = []
 
 [[devices]]
-id = "10462:4607:Microsoft X-Box 360 pad 0"
-vendor_id = 10462
-product_id = 4607
-name = "Microsoft X-Box 360 pad 0"
-raw_name = "Microsoft X-Box 360 pad 0"
+id = "xbox-controller"
+vendor_id = 1118
+product_id = 654
+name = "Xbox Controller"
+raw_name = "Xbox Controller"
 layout = ""
 device_kind = "gamepad"
+mappings_enabled = true
 active_binding_preset = ""
 binding_presets = []
 
@@ -32,15 +34,9 @@ name = "G502 X LIGHTSPEED"
 raw_name = "Logitech USB Receiver"
 layout = ""
 device_kind = "mouse"
+mappings_enabled = true
 active_binding_preset = ""
 binding_presets = []
-
-[[mappings]]
-from = 305
-
-[mappings.to]
-type = "key"
-code = 18
 
 [[mappings]]
 from = 306
@@ -55,3 +51,98 @@ from = 309
 [mappings.to]
 type = "key"
 code = 31
+
+[[mappings]]
+from = 61442
+
+[mappings.to]
+type = "key"
+code = 16
+
+[[mappings]]
+from = 61443
+
+[mappings.to]
+type = "key"
+code = 18
+
+[[mappings]]
+from = 61440
+
+[mappings.to]
+type = "key"
+code = 17
+
+[[mappings]]
+from = 61441
+
+[mappings.to]
+type = "key"
+code = 31
+
+[[mappings]]
+from = 304
+
+[mappings.to]
+type = "key"
+code = 57
+
+[[mappings]]
+from = 305
+
+[mappings.to]
+type = "key"
+code = 2
+
+[[mappings]]
+from = 310
+
+[mappings.to]
+type = "key"
+code = 15
+
+[[mappings]]
+from = 61446
+
+[mappings.to]
+type = "key"
+code = 30
+
+[[mappings]]
+from = 61447
+
+[mappings.to]
+type = "key"
+code = 32
+
+[[mappings]]
+from = 61444
+exclusive = true
+
+[mappings.to]
+type = "shortcut"
+modifiers = [56]
+key = 104
+
+[[mappings]]
+from = 61445
+exclusive = true
+
+[mappings.to]
+type = "shortcut"
+modifiers = [56]
+key = 109
+
+[[mappings]]
+from = 307
+
+[mappings.to]
+type = "key"
+code = 3
+
+[[mappings]]
+from = 308
+
+[mappings.to]
+type = "key"
+code = 3
