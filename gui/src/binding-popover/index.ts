@@ -32,6 +32,9 @@ export function createBindingPopover(): BindingPopoverController {
     currentButtonCode: null,
     currentAnchorEl: null,
     currentSelection: null,
+    currentExclusive: false,
+    currentToggle: false,
+    showInfo: false,
     currentError: "",
     pending: false,
     listening: false,
@@ -97,6 +100,9 @@ export function createBindingPopover(): BindingPopoverController {
     state.currentButtonCode = null;
     state.currentAnchorEl = null;
     state.currentSelection = null;
+    state.currentExclusive = false;
+    state.currentToggle = false;
+    state.showInfo = false;
     state.currentError = "";
     state.pending = false;
     popover.hidden = true;
@@ -110,9 +116,14 @@ export function createBindingPopover(): BindingPopoverController {
     state.currentButtonCode = options.button.code;
     state.currentAnchorEl = options.anchorEl;
     state.currentSelection = options.currentBinding ? { ...options.currentBinding } : null;
+    state.currentExclusive = options.currentExclusive === true;
+    state.currentToggle = options.currentToggle === true;
+    state.showInfo = false;
     state.currentError = "";
     state.pending = false;
-    stopListening();
+    // Armed as soon as the popover opens: any keypress becomes the pending
+    // binding. Nothing is written to the profile until Save.
+    startListening();
     layer.hidden = false;
     ctx.render();
     ctx.positionPopover();

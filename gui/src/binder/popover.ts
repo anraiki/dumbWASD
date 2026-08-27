@@ -13,8 +13,13 @@ export function createBindingPopoverController(options: {
       anchorEl: Element;
       button: { code: number; label: string };
       currentBinding: MappingTarget | null;
+      currentExclusive: boolean;
+      currentToggle: boolean;
       onClose(): void;
-      onSave(binding: MappingTarget): Promise<void>;
+      onSave(
+        binding: MappingTarget,
+        flags: { exclusive: boolean; toggle: boolean },
+      ): Promise<void>;
       onReset(): Promise<void>;
       onOpenMacroStudio?(): void;
     }): void;
@@ -45,15 +50,19 @@ export function createBindingPopoverController(options: {
       }
 
       const currentBinding = options.legacyBinder.getMapping(button.id);
+      const currentExclusive = options.legacyBinder.getExclusive(button.id);
+      const currentToggle = options.legacyBinder.getToggle(button.id);
       options.onSelectionChange(button.id);
 
       options.popover.open({
         anchorEl,
         button: { code: button.id, label: button.label },
         currentBinding,
+        currentExclusive,
+        currentToggle,
         onClose: clearSelection,
-        onSave: async (nextBinding) => {
-          await options.legacyBinder.persist(button.id, nextBinding);
+        onSave: async (nextBinding, flags) => {
+          await options.legacyBinder.persist(button.id, nextBinding, flags);
           options.statusEl.textContent = `${button.label} mapped to ${getMappingTargetLabel(nextBinding)}`;
         },
         onReset: async () => {

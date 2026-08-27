@@ -3,12 +3,10 @@ use async_trait::async_trait;
 use evdev::{Device, EventStream, EventType, KeyCode, RelativeAxisCode};
 use std::collections::{HashMap, VecDeque};
 
+use crate::core::dpad::{DpadCapabilities, DpadNormalizer, ABS_HAT0X, ABS_HAT0Y};
 use crate::core::event::InputEvent;
 use crate::devices::DeviceInfo;
 use crate::platform::InputBackend;
-
-const ABS_HAT0X: u16 = 0x10;
-const ABS_HAT0Y: u16 = 0x11;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AxisInfo {
@@ -24,31 +22,28 @@ pub struct LinuxInput {
     axis_info: HashMap<u16, AxisInfo>,
     /// Synthesized events waiting to be returned (a single hat transition can produce two).
     pending: VecDeque<InputEvent>,
-    /// Last seen value per digital hat axis, for press/release synthesis.
-    hat_values: HashMap<u16, i32>,
+    /// Folds every d-pad shape onto the canonical BTN_DPAD_* codes.
+    dpad: DpadNormalizer,
 }
 
 impl LinuxInput {
     pub fn new() -> Self {
-        Self {
-            stream: None,
-            grab: true,
-            device_name: None,
-            axis_info: HashMap::new(),
-            pending: VecDeque::new(),
-            hat_values: HashMap::new(),
-        }
+        Self::with_grab(true)
     }
 
     /// Create an input backend that does NOT grab the device (for monitoring).
     pub fn new_passive() -> Self {
+        Self::with_grab(false)
+    }
+
+    fn with_grab(grab: bool) -> Self {
         Self {
             stream: None,
-            grab: false,
+            grab,
             device_name: None,
             axis_info: HashMap::new(),
             pending: VecDeque::new(),
-            hat_values: HashMap::new(),
+            dpad: DpadNormalizer::default(),
         }
     }
 
@@ -60,46 +55,41 @@ impl LinuxInput {
         self.axis_info.get(&axis).copied()
     }
 
-    /// Digital hats (gamepad d-pads) report ABS_HAT0X/Y with a -1..1 range.
-    /// They are surfaced as BTN_DPAD_* button events instead of axis events.
-    fn is_digital_hat(&self, axis: u16) -> bool {
-        (axis == ABS_HAT0X || axis == ABS_HAT0Y)
-            && self
-                .axis_info
-                .get(&axis)
-                .is_some_and(|info| info.minimum == -1 && info.maximum == 1)
-    }
+    /// Configure d-pad normalization from what the opened device advertises.
+    fn configure_dpad(&mut self, device: &Device) {
+        let supported_keys = device.supported_keys();
+        let has_dpad_buttons = supported_keys.is_some_and(|keys| {
+            keys.contains(KeyCode::BTN_DPAD_UP)
+                || keys.contains(KeyCode::BTN_DPAD_DOWN)
+                || keys.contains(KeyCode::BTN_DPAD_LEFT)
+                || keys.contains(KeyCode::BTN_DPAD_RIGHT)
+        });
+        let is_gamepad = supported_keys.is_some_and(|keys| {
+            keys.contains(KeyCode::BTN_SOUTH)
+                || keys.contains(KeyCode::BTN_EAST)
+                || keys.contains(KeyCode::BTN_NORTH)
+                || keys.contains(KeyCode::BTN_WEST)
+        });
+        let has_hat_axes =
+            self.axis_info.contains_key(&ABS_HAT0X) || self.axis_info.contains_key(&ABS_HAT0Y);
 
-    fn dpad_button(axis: u16, direction: i32) -> u16 {
-        match (axis, direction.signum()) {
-            (ABS_HAT0X, -1) => KeyCode::BTN_DPAD_LEFT.0,
-            (ABS_HAT0X, _) => KeyCode::BTN_DPAD_RIGHT.0,
-            (ABS_HAT0Y, -1) => KeyCode::BTN_DPAD_UP.0,
-            (_, _) => KeyCode::BTN_DPAD_DOWN.0,
+        self.dpad = DpadNormalizer::new(DpadCapabilities {
+            has_dpad_buttons,
+            has_hat_axes,
+            is_gamepad,
+        });
+        for axis in [ABS_HAT0X, ABS_HAT0Y] {
+            if let Some(info) = self.axis_info.get(&axis) {
+                self.dpad.set_hat_range(axis, info.minimum, info.maximum);
+            }
         }
-    }
 
-    /// Translate a digital hat value change into d-pad button events.
-    /// Returns the first event; any second event (release+press on a direct
-    /// flip from -1 to 1) is queued in `pending`.
-    fn queue_hat_transition(&mut self, axis: u16, value: i32) -> Option<InputEvent> {
-        let previous = self.hat_values.insert(axis, value).unwrap_or(0);
-        if previous == value {
-            return None;
-        }
-        if previous != 0 {
-            self.pending.push_back(InputEvent::Button {
-                code: Self::dpad_button(axis, previous),
-                pressed: false,
-            });
-        }
-        if value != 0 {
-            self.pending.push_back(InputEvent::Button {
-                code: Self::dpad_button(axis, value),
-                pressed: true,
-            });
-        }
-        self.pending.pop_front()
+        tracing::debug!(
+            has_dpad_buttons,
+            has_hat_axes,
+            is_gamepad,
+            "configured d-pad normalization"
+        );
     }
 }
 
@@ -153,7 +143,7 @@ impl InputBackend for LinuxInput {
 
         self.axis_info.clear();
         self.pending.clear();
-        self.hat_values.clear();
+        self.dpad.reset();
         if let Ok(absinfo) = device.get_absinfo() {
             for (axis, info) in absinfo {
                 self.axis_info.insert(
@@ -166,6 +156,8 @@ impl InputBackend for LinuxInput {
                 );
             }
         }
+
+        self.configure_dpad(&device);
 
         tracing::info!("Opened device: {} ({})", device_name, path);
         self.device_name = Some(device_name);
@@ -183,6 +175,13 @@ impl InputBackend for LinuxInput {
 
         self.stream = Some(stream);
         Ok(())
+    }
+
+    fn axis_ranges(&self) -> Vec<(u16, i32, i32, i32)> {
+        self.axis_info
+            .iter()
+            .map(|(axis, info)| (*axis, info.minimum, info.maximum, info.flat))
+            .collect()
     }
 
     async fn next_event(&mut self) -> Result<InputEvent> {
@@ -207,17 +206,19 @@ impl InputBackend for LinuxInput {
                         continue;
                     }
                     return Ok(InputEvent::Button {
-                        code: ev.code(),
+                        code: self.dpad.normalize_button(ev.code()),
                         pressed: ev.value() == 1,
                     });
                 }
                 EventType::ABSOLUTE => {
                     let axis = ev.code();
-                    if self.is_digital_hat(axis) {
-                        match self.queue_hat_transition(axis, ev.value()) {
-                            Some(event) => return Ok(event),
-                            None => continue,
-                        }
+                    if self.dpad.owns_axis(axis) {
+                        let mut events = self.dpad.handle_hat(axis, ev.value()).into_iter();
+                        let Some(first) = events.next() else {
+                            continue;
+                        };
+                        self.pending.extend(events);
+                        return Ok(first);
                     }
                     return Ok(InputEvent::Axis {
                         axis,
@@ -245,91 +246,23 @@ impl InputBackend for LinuxInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dpad::{DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT, DPAD_UP};
+    use evdev::AbsoluteAxisCode;
 
-    fn input_with_digital_hat() -> LinuxInput {
-        let mut input = LinuxInput::new_passive();
-        for axis in [ABS_HAT0X, ABS_HAT0Y] {
-            input.axis_info.insert(
-                axis,
-                AxisInfo {
-                    minimum: -1,
-                    maximum: 1,
-                    flat: 0,
-                },
-            );
-        }
-        input
+    /// Core spells the canonical d-pad codes out as plain integers so it
+    /// stays platform-independent. This is the cross-check that those
+    /// numbers still match what evdev calls them.
+    #[test]
+    fn canonical_dpad_codes_match_the_evdev_crate() {
+        assert_eq!(DPAD_UP, KeyCode::BTN_DPAD_UP.0);
+        assert_eq!(DPAD_DOWN, KeyCode::BTN_DPAD_DOWN.0);
+        assert_eq!(DPAD_LEFT, KeyCode::BTN_DPAD_LEFT.0);
+        assert_eq!(DPAD_RIGHT, KeyCode::BTN_DPAD_RIGHT.0);
     }
 
     #[test]
-    fn hat_press_and_release_become_dpad_buttons() {
-        let mut input = input_with_digital_hat();
-
-        let press = input.queue_hat_transition(ABS_HAT0Y, -1);
-        assert_eq!(
-            press,
-            Some(InputEvent::Button {
-                code: KeyCode::BTN_DPAD_UP.0,
-                pressed: true,
-            })
-        );
-        assert!(input.pending.is_empty());
-
-        let release = input.queue_hat_transition(ABS_HAT0Y, 0);
-        assert_eq!(
-            release,
-            Some(InputEvent::Button {
-                code: KeyCode::BTN_DPAD_UP.0,
-                pressed: false,
-            })
-        );
-        assert!(input.pending.is_empty());
-    }
-
-    #[test]
-    fn hat_direction_flip_releases_then_presses() {
-        let mut input = input_with_digital_hat();
-
-        input.queue_hat_transition(ABS_HAT0X, -1);
-        let first = input.queue_hat_transition(ABS_HAT0X, 1);
-        assert_eq!(
-            first,
-            Some(InputEvent::Button {
-                code: KeyCode::BTN_DPAD_LEFT.0,
-                pressed: false,
-            })
-        );
-        assert_eq!(
-            input.pending.pop_front(),
-            Some(InputEvent::Button {
-                code: KeyCode::BTN_DPAD_RIGHT.0,
-                pressed: true,
-            })
-        );
-    }
-
-    #[test]
-    fn repeated_hat_value_is_ignored() {
-        let mut input = input_with_digital_hat();
-
-        input.queue_hat_transition(ABS_HAT0X, 1);
-        assert_eq!(input.queue_hat_transition(ABS_HAT0X, 1), None);
-        assert!(input.pending.is_empty());
-    }
-
-    #[test]
-    fn analog_hat_range_is_not_treated_as_dpad() {
-        let mut input = LinuxInput::new_passive();
-        input.axis_info.insert(
-            ABS_HAT0X,
-            AxisInfo {
-                minimum: -255,
-                maximum: 255,
-                flat: 0,
-            },
-        );
-
-        assert!(!input.is_digital_hat(ABS_HAT0X));
-        assert!(!input.is_digital_hat(ABS_HAT0Y));
+    fn hat_axis_codes_match_the_evdev_crate() {
+        assert_eq!(ABS_HAT0X, AbsoluteAxisCode::ABS_HAT0X.0);
+        assert_eq!(ABS_HAT0Y, AbsoluteAxisCode::ABS_HAT0Y.0);
     }
 }

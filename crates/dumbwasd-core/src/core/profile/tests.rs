@@ -1,4 +1,7 @@
-use super::{Behavior, BindingOutput, MacroBindMode, OutputTarget, PlaybackMode, Profile, Trigger};
+use super::{
+    Behavior, BindingOutput, MacroBindMode, OutputTarget, PlaybackMode, Profile, Trigger,
+    MIN_REPEAT_MS,
+};
 use crate::core::event::OutputAction;
 
 #[test]
@@ -74,6 +77,8 @@ fn round_trips_macro_mapping_with_embedded_definition() {
                     ],
                 },
             },
+            exclusive: false,
+            toggle: false,
         }],
     };
 
@@ -118,6 +123,7 @@ code = 33
     assert_eq!(profile.devices.len(), 1);
     assert_eq!(profile.mappings.len(), 1);
     assert!(profile.devices[0].binding_presets.is_empty());
+    assert!(profile.devices[0].mappings_enabled);
     assert!(profile.devices[0].active_binding_preset().is_none());
     assert!(profile.devices[0].id.is_empty());
 }
@@ -188,6 +194,24 @@ playback = { type = "toggle_repeat", interval_ms = 35 }
 }
 
 #[test]
+fn parses_disabled_device_mappings() {
+    let content = r#"
+[profile]
+name = "Default"
+
+[[devices]]
+id = "logitech-g602"
+vendor_id = 1133
+product_id = 16428
+name = "Logitech G602"
+mappings_enabled = false
+"#;
+
+    let profile: Profile = toml::from_str(content).expect("disabled mappings should parse");
+    assert!(!profile.devices[0].mappings_enabled);
+}
+
+#[test]
 fn parses_binding_profile_alias_fields() {
     let content = r#"
 [profile]
@@ -219,32 +243,210 @@ name = "FPS"
     );
 }
 
+/// A shortcut is held by default: modifiers and key go down on press and
+/// come back up on release, so the chord tracks the button.
 #[test]
-fn shortcut_output_target_emits_tap_sequence_on_press() {
-    let actions = OutputTarget::Shortcut {
-        modifiers: vec![29],
-        key: 38,
-    }
-    .actions(true);
+fn shortcut_is_held_for_as_long_as_the_button_is() {
+    let target = OutputTarget::Shortcut {
+        modifiers: vec![56],
+        key: 104,
+        repeat_ms: None,
+    };
 
     assert_eq!(
-        actions,
+        target.actions(true),
+        vec![
+            OutputAction::Key {
+                code: 56,
+                pressed: true
+            },
+            OutputAction::Key {
+                code: 104,
+                pressed: true
+            },
+        ]
+    );
+    assert_eq!(
+        target.actions(false),
+        vec![
+            OutputAction::Key {
+                code: 104,
+                pressed: false
+            },
+            OutputAction::Key {
+                code: 56,
+                pressed: false
+            },
+        ]
+    );
+    assert_eq!(target.repeat_interval(), None);
+}
+
+/// Modifiers must outlive the key on release, or the chord briefly decays
+/// into a bare keypress the host would act on.
+#[test]
+fn multi_modifier_shortcut_releases_in_reverse_order() {
+    let target = OutputTarget::Shortcut {
+        modifiers: vec![29, 42],
+        key: 37,
+        repeat_ms: None,
+    };
+
+    assert_eq!(
+        target.actions(true),
         vec![
             OutputAction::Key {
                 code: 29,
-                pressed: true,
+                pressed: true
             },
             OutputAction::Key {
-                code: 38,
-                pressed: true,
+                code: 42,
+                pressed: true
             },
             OutputAction::Key {
-                code: 38,
-                pressed: false,
+                code: 37,
+                pressed: true
+            },
+        ]
+    );
+    assert_eq!(
+        target.actions(false),
+        vec![
+            OutputAction::Key {
+                code: 37,
+                pressed: false
+            },
+            OutputAction::Key {
+                code: 42,
+                pressed: false
             },
             OutputAction::Key {
                 code: 29,
-                pressed: false,
+                pressed: false
+            },
+        ]
+    );
+}
+
+/// With auto-repeat on, the chord is tapped rather than held, so nothing is
+/// left down and the release edge has no work to do.
+#[test]
+fn auto_repeat_shortcut_taps_instead_of_holding() {
+    let target = OutputTarget::Shortcut {
+        modifiers: vec![56],
+        key: 104,
+        repeat_ms: Some(120),
+    };
+
+    let tap = vec![
+        OutputAction::Key {
+            code: 56,
+            pressed: true,
+        },
+        OutputAction::Key {
+            code: 104,
+            pressed: true,
+        },
+        OutputAction::Key {
+            code: 104,
+            pressed: false,
+        },
+        OutputAction::Key {
+            code: 56,
+            pressed: false,
+        },
+    ];
+
+    assert_eq!(target.actions(true), tap);
+    assert_eq!(target.actions(false), vec![]);
+    assert_eq!(target.repeat_actions(), tap);
+    assert_eq!(
+        target.repeat_interval(),
+        Some(std::time::Duration::from_millis(120))
+    );
+}
+
+/// Anything below the floor is raised to it — each tick emits a whole
+/// chord, so a very short interval floods the receiving application.
+#[test]
+fn repeat_interval_below_the_floor_is_raised_to_it() {
+    let target = OutputTarget::Shortcut {
+        modifiers: vec![56],
+        key: 104,
+        repeat_ms: Some(5),
+    };
+
+    assert_eq!(
+        target.repeat_interval(),
+        Some(std::time::Duration::from_millis(u64::from(MIN_REPEAT_MS)))
+    );
+}
+
+/// A zero interval would busy-loop the repeater, so it counts as "off".
+#[test]
+fn zero_repeat_interval_is_treated_as_no_repeat() {
+    let target = OutputTarget::Shortcut {
+        modifiers: vec![56],
+        key: 104,
+        repeat_ms: Some(0),
+    };
+
+    assert_eq!(target.repeat_interval(), None);
+    assert_eq!(target.repeat_actions(), vec![]);
+}
+
+/// By contrast, a plain key follows the button for as long as it is held.
+#[test]
+fn plain_key_tracks_the_button_while_held() {
+    let target = OutputTarget::Key { code: 30 };
+
+    assert_eq!(
+        target.actions(true),
+        vec![OutputAction::Key {
+            code: 30,
+            pressed: true
+        }]
+    );
+    assert_eq!(
+        target.actions(false),
+        vec![OutputAction::Key {
+            code: 30,
+            pressed: false
+        }]
+    );
+    assert_eq!(target.repeat_interval(), None);
+}
+
+/// Profiles saved before auto-repeat existed have no `repeat_ms` key.
+#[test]
+fn shortcut_without_repeat_ms_deserializes_as_held() {
+    let content = r#"
+[profile]
+name = "Default"
+
+[[mappings]]
+from = 304
+
+[mappings.to]
+type = "shortcut"
+modifiers = [56]
+key = 104
+"#;
+
+    let profile: Profile = toml::from_str(content).expect("profile parses");
+    let target = &profile.mappings[0].to;
+
+    assert_eq!(target.repeat_interval(), None);
+    assert_eq!(
+        target.actions(false),
+        vec![
+            OutputAction::Key {
+                code: 104,
+                pressed: false
+            },
+            OutputAction::Key {
+                code: 56,
+                pressed: false
             },
         ]
     );

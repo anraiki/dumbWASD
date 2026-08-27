@@ -1,9 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProfileDevice, ProfileDeviceKind } from "./device-bar";
-import type { DeviceEntry } from "./device-modal";
-import type { ButtonGrid } from "./button-grid";
-import type { LayoutEditorHandle } from "./react-flow-editor";
-import type { MappingTarget } from "./input-codes";
+import type { ProfileDevice, ProfileDeviceKind } from "../device-bar";
+import type { DeviceEntry } from "../device-modal";
+import type { ButtonGrid } from "../button-grid";
+import type { LayoutEditorHandle } from "../react-flow-editor";
+import type { MappingTarget } from "../input-codes";
+import {
+  getSavedSelectedDeviceId,
+  setSavedSelectedDeviceId,
+} from "./selected-device-storage";
+import {
+  deviceIdentity,
+  findDeviceEntry,
+  normalizeDeviceLabel,
+} from "./device-matching";
+
+// Re-exported so importers of "./profile-manager" keep working unchanged.
+export { normalizeDeviceLabel };
 
 // ── Types ──
 
@@ -35,136 +47,15 @@ export interface Profile {
     device?: string;
     from: number;
     to: MappingTarget;
+    /** Claims exclusive use of the output while held; absent means false. */
+    exclusive?: boolean;
+    /** Latches on first press and off on the next; absent means false. */
+    toggle?: boolean;
   }>;
 }
 
 // ── Utilities ──
 
-const SELECTED_DEVICE_STORAGE_KEY = "dumbwasd:selected-device-by-profile";
-
-export function normalizeDeviceLabel(value?: string | null): string {
-  return (value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function deviceIdentity(device: { id?: string; vendor_id: number; product_id: number }): string {
-  return device.id || `${device.vendor_id}:${device.product_id}`;
-}
-
-function loadSelectedDeviceMap(): Record<string, string> {
-  try {
-    const raw = window.localStorage.getItem(SELECTED_DEVICE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
-      )
-    );
-  } catch {
-    return {};
-  }
-}
-
-function saveSelectedDeviceMap(value: Record<string, string>) {
-  try {
-    window.localStorage.setItem(SELECTED_DEVICE_STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // Ignore storage failures and continue with in-memory state.
-  }
-}
-
-function getSavedSelectedDeviceId(profileName: string): string | null {
-  const selectedByProfile = loadSelectedDeviceMap();
-  return selectedByProfile[profileName] ?? null;
-}
-
-function setSavedSelectedDeviceId(profileName: string, deviceId: string | null) {
-  const selectedByProfile = loadSelectedDeviceMap();
-  if (deviceId) {
-    selectedByProfile[profileName] = deviceId;
-  } else {
-    delete selectedByProfile[profileName];
-  }
-  saveSelectedDeviceMap(selectedByProfile);
-}
-
-function entrySupportsDeviceKind(
-  entry: DeviceEntry,
-  deviceKind?: ProfileDeviceKind,
-): boolean {
-  switch (deviceKind) {
-    case "azeron":
-      return entry.is_azeron;
-    case "mouse":
-      return entry.has_mouse;
-    case "gamepad":
-      return entry.has_gamepad;
-    case "keyboard":
-      return entry.has_keyboard;
-    default:
-      return true;
-  }
-}
-
-function collectDeviceAliases(
-  device: { id?: string; name?: string; raw_name?: string },
-): Set<string> {
-  return new Set(
-    [device.id, device.name, device.raw_name]
-      .map((value) => normalizeDeviceLabel(value))
-      .filter(Boolean)
-  );
-}
-
-function entryMatchesAliases(entry: DeviceEntry, aliases: Set<string>): boolean {
-  if (aliases.size === 0) {
-    return false;
-  }
-
-  const entryLabels = [entry.name, entry.raw_name, entry.id]
-    .map((value) => normalizeDeviceLabel(value))
-    .filter(Boolean);
-
-  return entryLabels.some((label) => aliases.has(label));
-}
-
-function findDeviceEntry(
-  device: {
-    id?: string;
-    vendor_id: number;
-    product_id: number;
-    name?: string;
-    raw_name?: string;
-    device_kind?: ProfileDeviceKind;
-  },
-  allDevices: DeviceEntry[],
-): DeviceEntry | null {
-  const identity = deviceIdentity(device);
-  const exactMatch = allDevices.find((entry) => entry.id === identity);
-  if (exactMatch) return exactMatch;
-
-  const aliases = collectDeviceAliases(device);
-  const candidates = allDevices.filter(
-    (entry) => entry.vendor_id === device.vendor_id && entry.product_id === device.product_id
-  );
-  const namedMatches = candidates.filter((entry) => entryMatchesAliases(entry, aliases));
-
-  if (namedMatches.length === 1) return namedMatches[0];
-  if (candidates.length === 1) return candidates[0];
-
-  const vendorKindCandidates = allDevices.filter(
-    (entry) => entry.vendor_id === device.vendor_id && entrySupportsDeviceKind(entry, device.device_kind)
-  );
-  const vendorKindNameMatches = vendorKindCandidates.filter((entry) => entryMatchesAliases(entry, aliases));
-  if (vendorKindNameMatches.length === 1) return vendorKindNameMatches[0];
-
-  return null;
-}
 
 // ── Handle interface ──
 
@@ -174,6 +65,7 @@ export interface ProfileManagerHandle {
   selectDevice(device: ProfileDevice): Promise<void>;
   addDevice(device: ProfileDevice): Promise<void>;
   deleteDevice(device: ProfileDevice): Promise<void>;
+  setDeviceMappingsEnabled(device: ProfileDevice, enabled: boolean): Promise<void>;
   loadLayout(name: string): Promise<void>;
   selectLayout(name: string): Promise<void>;
   persistDeviceLayout(layoutName: string): Promise<void>;
@@ -185,6 +77,10 @@ export interface ProfileManagerHandle {
   getSelectedLayout(): string | null;
 
   updateProfile(profile: Profile): void;
+  /// Re-resolve every device in the loaded profile against the current
+  /// system list, after a hotplug changed what is plugged in. Touches
+  /// in-memory state and the device bar only — never writes the profile.
+  refreshDeviceState(): void;
   findSystemEntry(device: ProfileDevice): DeviceEntry | null;
   getDeviceKind(entry: DeviceEntry | null): ProfileDeviceKind | undefined;
   isSameDevice(a: ProfileDevice | null, b: ProfileDevice | null): boolean;
@@ -219,6 +115,7 @@ export function createProfileManager(options: {
   renderWorkspace(): void;
   syncAuxPanels(): void;
   syncMonitoringScope(force?: boolean): Promise<void>;
+  onSelectedDeviceChange(): void;
 }): ProfileManagerHandle {
   let currentProfileName: string | null = null;
   let currentProfile: Profile | null = null;
@@ -330,6 +227,7 @@ export function createProfileManager(options: {
 
     selectedDevice = device;
     options.deviceBar.setSelected(device);
+    options.onSelectedDeviceChange();
     if (currentProfileName) {
       setSavedSelectedDeviceId(currentProfileName, deviceIdentity(device));
     }
@@ -383,6 +281,7 @@ export function createProfileManager(options: {
         options.deviceBar.setDevices(currentProfile.devices);
         selectedDevice = null;
         options.deviceBar.setSelected(null);
+        options.onSelectedDeviceChange();
 
         options.gridContainer.innerHTML = "";
         options.eventLogContainer.style.display = "none";
@@ -469,6 +368,29 @@ export function createProfileManager(options: {
       }
     },
 
+    async setDeviceMappingsEnabled(device: ProfileDevice, enabled: boolean) {
+      if (!currentProfile || !currentProfileName) {
+        throw new Error("Select a profile first");
+      }
+
+      const index = currentProfile.devices.findIndex((candidate) => isSameDevice(candidate, device));
+      if (index < 0) return;
+
+      const updatedDevice = { ...currentProfile.devices[index], mappings_enabled: enabled };
+      const nextDevices = [...currentProfile.devices];
+      nextDevices[index] = updatedDevice;
+      const nextProfile = { ...currentProfile, devices: nextDevices };
+
+      await invoke("save_profile", { name: currentProfileName, profile: nextProfile });
+      currentProfile = nextProfile;
+      if (isSameDevice(selectedDevice, device)) selectedDevice = updatedDevice;
+      options.deviceBar.setDevices(nextDevices);
+      options.deviceBar.setSelected(selectedDevice);
+      options.onSelectedDeviceChange();
+      // Re-arming releases held or toggled outputs before changing behavior.
+      await options.syncMonitoringScope(true);
+    },
+
     loadLayout,
     persistDeviceLayout,
 
@@ -486,6 +408,21 @@ export function createProfileManager(options: {
 
     updateProfile(profile: Profile) {
       currentProfile = profile;
+    },
+
+    refreshDeviceState() {
+      if (!currentProfile) return;
+
+      currentProfile.devices = hydrateDevices(currentProfile.devices);
+      options.deviceBar.setDevices(currentProfile.devices);
+
+      if (!selectedDevice) return;
+      // Keep the selection pointed at the refreshed record so its
+      // connected/offline state is the one the bar renders.
+      selectedDevice =
+        currentProfile.devices.find((device) => isSameDevice(device, selectedDevice)) ??
+        selectedDevice;
+      options.deviceBar.setSelected(selectedDevice);
     },
 
     findSystemEntry: (device) => findDeviceEntry(device, options.allDevices),

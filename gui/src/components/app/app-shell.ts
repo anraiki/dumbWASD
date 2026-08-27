@@ -14,6 +14,8 @@ export interface AppShellRefs {
   clearLogBtn: HTMLButtonElement;
   listenAllDevicesToggle: HTMLInputElement;
   actionBar: HTMLElement;
+  toggleDeviceMappingsBtn: HTMLButtonElement;
+  deviceMappingsToggle: HTMLInputElement;
   profileListEl: HTMLUListElement;
   addProfileBtn: HTMLElement;
   deviceChipsEl: HTMLElement;
@@ -119,7 +121,15 @@ export function mountAppShell(container: HTMLElement): AppShellRefs {
           </div>
           <div class="action-bar">
             <button class="btn btn-action" disabled title="Not implemented yet">Apply to Slot</button>
-            <button class="btn btn-action" disabled title="Not implemented yet">Power Off</button>
+            <div class="mapping-power-control">
+              <button id="btn-toggle-device-mappings" class="btn btn-action btn-power" title="Toggle mappings for the selected device" aria-label="Toggle mappings for the selected device">
+                <svg class="power-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10M6.34 5.34a8 8 0 1 0 11.32 0" /></svg>
+              </button>
+              <label class="mapping-power-toggle" for="toggle-device-mappings" aria-label="Toggle mappings for the selected device">
+                <input id="toggle-device-mappings" type="checkbox" role="switch" />
+                <span class="mapping-power-toggle-track" aria-hidden="true"><span></span></span>
+              </label>
+            </div>
           </div>
           <footer class="status-bar">
             <span id="connection-indicator" class="connection-indicator disconnected" title="Disconnected">&#x25CF;</span>
@@ -148,6 +158,8 @@ export function mountAppShell(container: HTMLElement): AppShellRefs {
     clearLogBtn:          q<HTMLButtonElement>("#btn-clear-log"),
     listenAllDevicesToggle: q<HTMLInputElement>("#toggle-listen-all-devices"),
     actionBar:            q(".action-bar"),
+    toggleDeviceMappingsBtn: q<HTMLButtonElement>("#btn-toggle-device-mappings"),
+    deviceMappingsToggle: q<HTMLInputElement>("#toggle-device-mappings"),
     profileListEl:        q<HTMLUListElement>("#profile-list"),
     addProfileBtn:        q("#btn-add-profile"),
     deviceChipsEl:        q("#device-chips"),

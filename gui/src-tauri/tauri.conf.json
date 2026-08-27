@@ -5,9 +5,9 @@
   "identifier": "com.dumbwasd.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "PATH=$HOME/.bun/bin:$PATH bun run dev",
-    "beforeBuildCommand": "PATH=$HOME/.bun/bin:$PATH bun run build"
+    "devUrl": "http://localhost:5183",
+    "beforeDevCommand": "pnpm run dev",
+    "beforeBuildCommand": "pnpm run build"
   },
   "app": {
     "windows": [

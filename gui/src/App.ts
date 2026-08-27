@@ -15,6 +15,7 @@ import { createAppState } from "./store/app-state";
 import { loadStartupData } from "./init";
 import { setupWindowChrome } from "./components/app/window-chrome";
 import { createDeviceBarController } from "./components/app/device-bar-controller";
+import { createDeviceHotplug } from "./components/app/device-hotplug";
 import { setupModeControls, type ModeControlsHandle } from "./components/app/mode-controls";
 import { mountAppShell } from "./components/app/app-shell";
 
@@ -25,6 +26,7 @@ export async function createApp(container: HTMLElement) {
     titleBar, windowTitleEl, minimizeWindowBtn, maximizeWindowBtn, closeWindowBtn,
     reconnectBtn, toggleModeBtn, gridContainer, statusEl, connectionIndicator,
     eventLogContainer, eventLog, clearLogBtn, listenAllDevicesToggle, actionBar,
+    toggleDeviceMappingsBtn, deviceMappingsToggle,
     profileListEl, addProfileBtn, deviceChipsEl, addDeviceBtn,
     hamburgerBtn, overlayBtn, macroBtn, layoutSelectorEl,
   } = mountAppShell(container);
@@ -77,6 +79,20 @@ export async function createApp(container: HTMLElement) {
 
   function findDeviceEntryByPath(path: string): DeviceEntry | null {
     return state.allDevices.find((device) => device.paths.includes(path)) ?? null;
+  }
+
+  function syncDeviceMappingControls() {
+    const device = profileManager?.getSelectedDevice();
+    const enabled = !!device && device.mappings_enabled !== false;
+    toggleDeviceMappingsBtn.disabled = !device;
+    toggleDeviceMappingsBtn.classList.toggle("active", enabled);
+    toggleDeviceMappingsBtn.setAttribute("aria-pressed", String(enabled));
+    toggleDeviceMappingsBtn.title = device
+      ? `${enabled ? "Disable" : "Enable"} mappings for ${device.name}`
+      : "Select a device first";
+    deviceMappingsToggle.disabled = !device;
+    deviceMappingsToggle.checked = enabled;
+    container.classList.toggle("selected-device-mappings-disabled", !!device && !enabled);
   }
 
   const eventLogHandle = createEventLog(eventLog, findDeviceEntryByPath);
@@ -143,12 +159,39 @@ export async function createApp(container: HTMLElement) {
     renderWorkspace: () => workspace.render(),
     syncAuxPanels: () => workspace.syncAuxPanels(),
     syncMonitoringScope: (force) => monitor.syncScope(force),
+    onSelectedDeviceChange: syncDeviceMappingControls,
   });
+
+  async function toggleSelectedDeviceMappings() {
+    const device = profileManager.getSelectedDevice();
+    if (!device) {
+      statusEl.textContent = "Select a device first";
+      return;
+    }
+
+    const enabled = device.mappings_enabled === false;
+    toggleDeviceMappingsBtn.disabled = true;
+    try {
+      await profileManager.setDeviceMappingsEnabled(device, enabled);
+      syncDeviceMappingControls();
+      statusEl.textContent = `${device.name} mappings ${enabled ? "enabled" : "disabled"}`;
+    } catch (error) {
+      statusEl.textContent = `Error updating device mappings: ${error}`;
+    } finally {
+      syncDeviceMappingControls();
+    }
+  }
+
+  toggleDeviceMappingsBtn.addEventListener("click", () => void toggleSelectedDeviceMappings());
+  deviceMappingsToggle.addEventListener("change", () => void toggleSelectedDeviceMappings());
 
   legacyBinder = createLegacyBinder({
     profileManager,
     onProfileUpdate: (profile) => profileManager.updateProfile(profile),
-    syncMonitoringScope: () => monitor.syncScope(true),
+    // Not forced: saving a binding only needs to restart monitoring when the
+    // backend is the one applying mappings. syncScope compares the whole
+    // request, so an unchanged one is a no-op instead of a visible restart.
+    syncMonitoringScope: () => monitor.syncScope(),
   });
 
   // joystickTracker (depends on profileManager)
@@ -246,6 +289,20 @@ export async function createApp(container: HTMLElement) {
     workspace,
     monitor,
   });
+
+  // ── Hotplug ──
+  // A device that comes or goes mid-session refreshes the list in place and
+  // re-arms monitoring, so neither a replug nor a brand new device needs the
+  // app restarted.
+  const deviceHotplug = createDeviceHotplug({
+    statusEl,
+    replaceDevices: state.replaceDevices,
+    onRefreshed: async () => {
+      profileManager.refreshDeviceState();
+      await monitor.syncScope(true);
+    },
+  });
+  await deviceHotplug.start();
 
   // ── Startup ──
   await profileManager.refreshProfileList();

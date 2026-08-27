@@ -30,6 +30,13 @@ export interface AppState {
   allDevices: DeviceEntry[];
   layouts: string[];
 
+  /// Swap in a freshly enumerated device list after a hotplug.
+  ///
+  /// Consumers capture `allDevices` by reference when they are constructed,
+  /// so the contents are replaced in place — reassigning the field would
+  /// leave every one of them reading the old array.
+  replaceDevices(devices: DeviceEntry[]): void;
+
   // ── Shared collections ──
   pressedButtons: Set<number>;
 }
@@ -74,6 +81,7 @@ export function createAppState(): AppState {
     setCloseDeviceContextMenu: (fn) => { closeDeviceContextMenu = fn; },
 
     initialize: (data) => { allDevices = data.allDevices; layouts = data.layouts; },
+    replaceDevices: (devices) => { allDevices.splice(0, allDevices.length, ...devices); },
     get allDevices() { return allDevices; },
     get layouts() { return layouts; },
 

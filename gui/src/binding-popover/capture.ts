@@ -55,17 +55,23 @@ export function createCaptureHandlers(ctx: PopoverContext): CaptureHandlers {
 
     if (event.key === "Escape") {
       event.preventDefault();
-      if (state.listening) {
-        ctx.stopListening();
+      // The help overlay is the thing on top, so Escape backs out of that
+      // first and leaves the binding alone.
+      if (state.showInfo) {
+        state.showInfo = false;
         ctx.render();
         ctx.positionPopover();
         return;
       }
+      // Capture is armed for as long as the popover is open, so there is no
+      // "disarm" step to cancel into — Escape dismisses outright, discarding
+      // whatever was captured but not saved.
       ctx.close();
       return;
     }
 
-    if (!state.listening || state.pending) {
+    // Reading the help must not rebind the button under it.
+    if (state.showInfo || !state.listening || state.pending) {
       return;
     }
 
@@ -93,7 +99,9 @@ export function createCaptureHandlers(ctx: PopoverContext): CaptureHandlers {
       ? { type: "shortcut", modifiers, key: code }
       : { type: "key", code };
     state.currentError = "";
-    ctx.stopListening();
+    // Stay armed rather than disarming, so a wrong capture can be replaced
+    // by simply pressing again. Nothing reaches the profile until Save.
+    ctx.startListening();
     ctx.render();
     ctx.positionPopover();
   };
@@ -112,9 +120,13 @@ export function createCaptureHandlers(ctx: PopoverContext): CaptureHandlers {
     event.stopPropagation();
 
     if (state.modifierOnlyCandidate === code && state.captureModifiers.size === 1) {
+      // Tapping a modifier on its own binds that modifier — but capture
+      // stays armed, so holding it and adding a key next replaces this with
+      // the full shortcut. Disarming here was what made "Alt then A" stick
+      // as a bare "Left Alt".
       state.currentSelection = { type: "key", code };
       state.currentError = "";
-      ctx.stopListening();
+      ctx.startListening();
       ctx.render();
       ctx.positionPopover();
       return;

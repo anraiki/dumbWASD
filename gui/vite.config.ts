@@ -19,14 +19,19 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 5183,
     strictPort: true,
     host: host || false,
     hmr: host
-      ? { protocol: "ws", host, port: 5174 }
+      ? { protocol: "ws", host, port: 5184 }
       : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
+    },
+    fs: {
+      // The @devices alias resolves outside this root, so the dev server
+      // has to be told those files may be served.
+      allow: [resolve(__dirname), resolve(__dirname, "../devices")],
     },
   },
 });

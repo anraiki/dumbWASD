@@ -21,6 +21,7 @@ fn resolves_combo_when_inputs_pressed_within_window() {
             raw_name: String::new(),
             layout: String::new(),
             device_kind: String::new(),
+            mappings_enabled: true,
             active_binding_preset: "default".to_string(),
             binding_presets: vec![BindingPreset {
                 id: "default".to_string(),
